@@ -1,0 +1,10 @@
+{
+    "dependencies": [
+        "./local_package"
+    ],
+    "graphs": {
+        "self.graph": "./Agent/agent.py:Workflow"
+    },
+    "env": "./.env",
+    "python_version": "3.12"
+}
