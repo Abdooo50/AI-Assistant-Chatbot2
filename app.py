@@ -1,9 +1,9 @@
+# streamlit_app.py
 import streamlit as st
-from Workflow.workflow import Workflow
-from Workflow.utils.helper_functions import to_markdown
+import requests
 
-
-
+# FastAPI backend URL
+FASTAPI_URL = "http://127.0.0.1:8000"
 
 # Streamlit app setup
 st.title("AI Medical Assistant")
@@ -11,15 +11,6 @@ st.title("AI Medical Assistant")
 st.image("mosefak.jpg", width=380)
 st.write("Get medical advice, book appointments, and healthcare inquiries!")
 st.divider()
-
-
-# Initialize Workflow instance in session state
-if "workflow" not in st.session_state:
-    st.session_state.workflow = Workflow()
-
-
-st.image(st.session_state.workflow.visualize_graph())
-
 
 # Initialize session state to store chat history
 if "messages" not in st.session_state:
@@ -40,20 +31,22 @@ if user_question := st.chat_input("Ask your medical question here:"):
     with st.chat_message("user"):
         st.markdown(user_question)
 
-    # Create a placeholder for the assistant's response
-    assistant_message_placeholder = st.chat_message("assistant")
-    response_container = assistant_message_placeholder.empty()
-
-    # Stream the response
-    response_text = ""
+    # Send the question to the FastAPI backend
     try:
-        for partial_response in st.session_state.workflow.get_response(user_question):
-            # Append new content to the response text
-            response_text += partial_response
-            # Update the placeholder with the current response
-            response_container.markdown(to_markdown(response_text))
+        response = requests.post(
+            f"{FASTAPI_URL}/ask",
+            json={"question": user_question}
+        )
+        if response.status_code == 200:
+            assistant_response = response.json().get("response", "No response received.")
+        else:
+            assistant_response = f"Error: {response.status_code} - {response.text}"
     except Exception as e:
-        response_container.markdown("An error occurred while processing your request.")
+        assistant_response = f"An error occurred: {str(e)}"
 
-    # Add full assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": to_markdown(response_text)})
+    # Display assistant response
+    with st.chat_message("assistant"):
+        st.markdown(assistant_response)
+
+    # Add assistant response to chat history
+    st.session_state.messages.append({"role": "assistant", "content": assistant_response})

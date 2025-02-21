@@ -1,4 +1,3 @@
-import re
 from Workflow.utils.helper_functions import extract_messages, get_google_api_key, remove_sql_block
 from Workflow.utils.vector_store import load_faiss_index
 from Workflow.utils.state import State
