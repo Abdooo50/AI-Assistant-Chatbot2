@@ -1,3 +1,4 @@
+import ast
 import os
 import re
 import textwrap
@@ -69,3 +70,10 @@ def extract_messages(input_string):
             ai_messages.append(content)
 
     return human_messages, ai_messages
+
+
+def query_as_list(db, query):
+    res = db.run(query)
+    res = [el for sub in ast.literal_eval(res) for el in sub if el]
+    res = [re.sub(r"\b\d+\b", "", string).strip() for string in res]
+    return list(set(res))

@@ -1,13 +1,17 @@
 from Workflow.utils.helper_functions import extract_messages, get_google_api_key, remove_sql_block
+from Workflow.utils.tools import create_proper_noun_retriever_tool
 from Workflow.utils.vector_store import load_faiss_index
 from Workflow.utils.state import State
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.utilities import SQLDatabase
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains import RetrievalQA
+from langgraph.prebuilt import create_react_agent
+
+from langchain_community.agent_toolkits import SQLDatabaseToolkit
+from langchain_community.utilities import SQLDatabase
 
 from langsmith import traceable
 
@@ -20,8 +24,16 @@ db = SQLDatabase.from_uri(connection_uri)
 MODEL_NAME = "gemini-2.0-flash-001"
 google_api_key = get_google_api_key()
 llm = ChatGoogleGenerativeAI(model=f"models/{MODEL_NAME}", google_api_key=google_api_key, temperature=0)
+embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_api_key)
 
 
+
+
+# toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+# tools = toolkit.get_tools()
+
+retriever_tool = create_proper_noun_retriever_tool(db, embeddings)
+tools = [retriever_tool]
 
 
 @traceable(metadata={"llm": MODEL_NAME})
@@ -86,7 +98,7 @@ def classify_user_intent(state: State) -> str:
 def question_answer(state: State):
 
     messages = str(state["messages"][-10:])
-    human_messages, _ = extract_messages(messages)
+    human_messages, ai_messages = extract_messages(messages)
 
 
     prompt_template = ChatPromptTemplate([
@@ -162,7 +174,7 @@ def write_and_execute_query(state: State):
     print("Human Messages:", human_messages)
     print("AI Messages:", ai_messages)
 
-    prompt_template = ChatPromptTemplate.from_messages([
+    system_message = ChatPromptTemplate.from_messages([
         (
             "system",
             """
@@ -186,23 +198,29 @@ def write_and_execute_query(state: State):
             """
         ),
         ("user", f"{human_messages[-1]}")
-    ])
+    ]).format(messages=human_messages, tables_info=tables_info)
 
-    # Generate SQL query or determine if the request is unsupported
-    chain = (
-        prompt_template
-        | llm
-        | StrOutputParser()
+    suffix = (
+    "If you need to filter on a proper noun like a Name, you must ALWAYS first look up "
+    "the filter value using the 'search_proper_nouns' tool! Do not try to "
+    "guess at the proper name - use this function to find similar ones."
     )
 
-    result = chain.invoke({
-        "messages": human_messages,
-        "tables_info": tables_info
-    })
+    system_message = f"{system_message}\n\n{suffix}"
 
-    print("Generated SQL Query:", result)
 
-    cleaned_query = remove_sql_block(result)
+    agent_executor = create_react_agent(llm, tools, prompt=system_message)
+    last_agent_message = None
+
+    for step in agent_executor.stream(
+        {"messages": [{"role": "user", "content": human_messages[-1]}]},
+        stream_mode="values",
+    ):
+        last_agent_message = step["messages"][-1].content
+    
+    print("last_agent_message", last_agent_message)
+
+    cleaned_query = remove_sql_block(last_agent_message)
 
     # If the generated SQL query is "Not Available", return an empty result
     if cleaned_query.strip().lower() == "not available":

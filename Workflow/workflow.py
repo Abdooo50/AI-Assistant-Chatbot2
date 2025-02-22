@@ -24,9 +24,9 @@ class Workflow:
             }
         )
 
+        self.graph_builder.add_edge("write_and_execute_query", "generate_answer")
         self.graph_builder.add_edge("question_answer", END)
         self.graph_builder.add_edge("generate_answer", END)
-        self.graph_builder.add_edge("write_and_execute_query", "generate_answer")
 
         DB_URI = "postgresql://postgres:12345@localhost:5432/postgres?sslmode=prefer"
         connection_kwargs = {
@@ -36,6 +36,7 @@ class Workflow:
 
         self.pool = ConnectionPool(conninfo=DB_URI, max_size=20, kwargs=connection_kwargs)
         self.checkpointer = PostgresSaver(self.pool)
+        self.checkpointer.setup()
         self.graph = self.graph_builder.compile(checkpointer=self.checkpointer)
         self.viz_graph = self.graph.get_graph().draw_mermaid_png()
 
