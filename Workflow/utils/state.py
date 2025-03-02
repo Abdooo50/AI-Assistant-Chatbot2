@@ -12,6 +12,7 @@ class State(TypedDict):
         SQLResult: The result retrieved from the query (if applicable).
         answer: The final answer to the question.
         messages: The list of messages for the workflow.
+        payload: The decoded JWT token data (e.g., user ID, roles, etc.).
     """
     question: Annotated[str, "User input question"]
     category: Annotated[str, "Categorized user intent (information_related, complaint_related, or booking_related)"]
@@ -19,3 +20,4 @@ class State(TypedDict):
     SQLResult: Annotated[str, "Query result if applicable"]
     answer: Annotated[str, "Final answer"]
     messages: Annotated[list, add_messages]
+    payload: Annotated[dict, "Decoded JWT token data (e.g., user ID, roles, etc.)"]

@@ -35,7 +35,8 @@ if user_question := st.chat_input("Ask your medical question here:"):
     try:
         response = requests.post(
             f"{FASTAPI_URL}/ask",
-            json={"question": user_question}
+            json={"question": user_question},
+            headers={"Authorization": f"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMSIsInJvbGUiOiJQYXRpZW50In0.GdNyr4TigdDnZZytYzMoet1NroXNW0B9twkmdIx5IMw"}
         )
         if response.status_code == 200:
             assistant_response = response.json().get("response", "No response received.")

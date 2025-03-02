@@ -1,16 +1,17 @@
 import os
 from langchain_community.vectorstores import FAISS
 from langchain.schema import Document
+from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 import pandas as pd
-from Workflow.utils.helper_functions import get_google_api_key
+
+from Workflow.utils.config import Config
 
 
 
-# Initialize embeddings
-google_api_key = get_google_api_key()
-embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=google_api_key)
+config = Config()
+embeddings = config.embeddings
+
 
 def create_and_save_faiss(file_path: str, save_path: str = "faiss_index/") -> None:
     """
@@ -65,7 +66,7 @@ def create_and_save_faiss(file_path: str, save_path: str = "faiss_index/") -> No
 
 
 
-def load_faiss_index(directory: str = "faiss_index"):
+def load_faiss_index(directory: str):
     """
     Load a FAISS index from the specified directory and filename.
 
@@ -98,3 +99,30 @@ def load_faiss_index(directory: str = "faiss_index"):
 
 # response = retrievalQA.run("How to diagnose Parasites - Cysticercosis ?")
 # print(response)
+
+
+
+def create_db_from_local_pdf(file_path: str) -> FAISS:
+    """
+    Create a FAISS database from a locally stored PDF file.
+
+    Args:
+        file_path (str): Path to the local PDF file.
+
+    Returns:
+        FAISS: A FAISS vector store database built from the PDF's content.
+    """
+    # Load the document from the local file
+    loader = PyPDFLoader(file_path)
+    documents = loader.load()
+
+    # Split the documents into chunks
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=50)
+    docs = text_splitter.split_documents(documents)
+
+    # Create the FAISS vector store
+    db = FAISS.from_documents(docs, embeddings)
+
+    db.save_local("mobile_ui")
+
+# create_db_from_local_pdf("Data Prepration\mobile design - english.pdf")
