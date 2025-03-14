@@ -1,5 +1,5 @@
 from Workflow.utils.config import Config
-from Workflow.utils.helper_functions import create_faiss_index, extract_messages, format_doctors, generate_response, process_documents, query_doctors_from_db, remove_sql_block, retrieve_context
+from Workflow.utils.helper_functions import contains_arabic, create_faiss_index, extract_messages, format_doctors, generate_response, process_documents, query_doctors_from_db, remove_sql_block, retrieve_context, translate_question
 from Workflow.utils.tables_info import load_tables_info
 from Workflow.utils.vector_store import load_faiss_index
 from Workflow.utils.state import State
@@ -7,7 +7,6 @@ from Workflow.utils.state import State
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain.chains import RetrievalQA
 
 from langsmith import traceable
 
@@ -21,6 +20,7 @@ llm = config.llm
 embeddings = config.embeddings
 MODEL_NAME = config.MODEL_NAME
 
+NUMBER_OF_LAST_MESSAGES = config.NUMBER_OF_LAST_MESSAGES
 
 
 
@@ -38,7 +38,7 @@ def classify_user_intent(state: State) -> str:
         One of the three category strings.
     """
 
-    messages = str(state["messages"][-10:])
+    messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
     structured_conversation = extract_messages(messages)
 
     question = state["messages"][-1].content
@@ -47,9 +47,9 @@ def classify_user_intent(state: State) -> str:
         (
             "system",
             """
-            Determine the category of the latest user question. The question can belong to one of these four categories:
+            - **Previous Human AI Messages:**\n {messages}\n
 
-            - **Previous Human\AI Messages:**\n {messages}\n
+            Based on Previous Human AI Messages Determine the category of the latest user question. The question can belong to one of these four categories:
 
             1. **query_related**: The user wants to retrieve or analyze data from the database.
                 - Examples:
@@ -62,6 +62,8 @@ def classify_user_intent(state: State) -> str:
                     - What are the symptoms of diabetes?
                     - How can I lower my blood pressure?
                     - What is the treatment for migraines?
+                    - Hi, How are you?
+                    - Hello!
 
             3. **doctor_recommendation_related**: The user is describing symptoms and needs a doctor recommendation.
                 - Examples:
@@ -102,10 +104,18 @@ def classify_user_intent(state: State) -> str:
 @traceable(metadata={"llm": MODEL_NAME, "embedding": "FAISS"})
 def question_answer(state: State):
 
-    messages = str(state["messages"][-10:])
+    messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
     structured_conversation = extract_messages(messages)
 
     question = state["messages"][-1].content
+
+    response_langauge = "English"
+
+    is_arabic = contains_arabic(question)
+
+    if is_arabic:
+        response_langauge = "Arabic"
+        question = translate_question(question=question, llm=llm)
 
     prompt_template = ChatPromptTemplate([
         (
@@ -115,11 +125,11 @@ def question_answer(state: State):
 
             If the context is accurate and related to the question then **Supply your answer with it**.\n
 
-            - **Previous Human\AI Messages:**\n {messages}\n
-            - The context:\n {context}\n\n
+            - **Previous Human AI Messages:**\n {messages}\n
+            - The Result from our data:\n {context}\n\n
 
 
-            **Ignore the context** if it said **I'm sorry** and Respond based on your **Knowledge** and the **The guidelines are as follows:**\n
+            Respond based on the **The guidelines are as follows:**\n
 
             Scope of Advice:
             - Answering general health inquiries.
@@ -135,25 +145,24 @@ def question_answer(state: State):
 
             Response Style:
             - Respond with kindness and professionalism, maintaining a supportive tone.
-            - **Respond in the language in which the user asked the question.**
+            - Respond in {response_langauge}.
             """
         ), 
-        ("human", question)
+        ("user", question)
     ])
 
-    retriever = load_faiss_index("faiss_index")
-    retrievalQA = RetrievalQA.from_llm(llm=llm, retriever=retriever)
-    context = retrievalQA.run(question)
+    faiss_index = load_faiss_index("faiss_index")
+    context = retrieve_context(faiss_index, question, llm)
 
-    print("Retrieved Context: ", context)
+    print("Retrieved Context: ", context["result"])
 
     chain = (
-        {"context": RunnablePassthrough(), "messages": RunnablePassthrough()}
+        RunnablePassthrough()
         | prompt_template
         | llm
     )
 
-    response = chain.invoke({"context": context, "messages": structured_conversation})
+    response = chain.invoke({"context": context["result"], "messages": structured_conversation, "response_langauge": response_langauge})
 
     return {"messages": [response]}
 
@@ -173,10 +182,9 @@ def write_and_execute_query(state: State):
 
     tables_info = load_tables_info(role=user_role)
 
-    messages = str(state["messages"][-10:])
+    messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
     structured_conversation = extract_messages(messages)
 
-    print("Structured Conversation:", structured_conversation)
 
     question = state["messages"][-1].content
 
@@ -196,23 +204,20 @@ def write_and_execute_query(state: State):
 
                 **Restrictions:**
                 - Only allow access to private columns/tables (e.g., [ProblemDescription], [CancellationReason], [IsPaid], [Security].[Users]) if the query includes a filter matching the user's `AppUserId` with their own ID.
-                - Do not allow queries that retrieve personal or sensitive information about other patients.
-                - Only allow general queries such as the number of appointments for specific doctors.
-                - Filter the values in English based on the outputs of the 'search_proper_nouns' tool.
 
                 **Context:**
-                - **Previous Human\AI Messages Context:**\n {messages}\n
+                - **Previous Human AI Messages Context:**\n {messages}\n
                 - **Database Schema:**\n {tables_info}\n
                 - **Use this user id if needed:**\n {user_id}\n
                 - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
 
                 **Expected Output:**
                 ```sql
-                -- Optimized SQL Query (or "Not Available" if the data is not retrievable)
                 ```
+                (or "Not Available" if the data is not retrievable)
                 """
             ),
-            ("human", question)
+            ("user", question)
         ])
 
     elif user_role == "Doctor":
@@ -234,7 +239,7 @@ def write_and_execute_query(state: State):
                 - Do not allow queries that retrieve personal or sensitive information about patients not associated with the doctor.
 
                 **Context:**
-                - **Previous Human\AI Messages Context:**\n {messages}\n
+                - **Previous Human AI Messages Context:**\n {messages}\n
                 - **Database Schema:**\n {tables_info}\n
                 - **Use this user id if needed:**\n {user_id}\n
                 - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
@@ -245,7 +250,7 @@ def write_and_execute_query(state: State):
                 ```
                 """
             ),
-            ("human", question)
+            ("user", question)
         ])
 
     elif user_role == "Admin":
@@ -264,7 +269,7 @@ def write_and_execute_query(state: State):
                 - Do **not** provide explanations—return only the SQL query or "Not Available".
 
                 **Context:**
-                - **Previous Human\AI Messages Context:**\n {messages}\n
+                - **Previous Human AI Messages Context:**\n {messages}\n
                 - **Database Schema:**\n {tables_info}\n
                 - **Use this user id if needed:**\n {user_id}\n
                 - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
@@ -275,7 +280,7 @@ def write_and_execute_query(state: State):
                 ```
                 """
             ),
-            ("human", question)
+            ("user", question)
         ])
 
 
@@ -355,28 +360,43 @@ def generate_answer(state: State):
 
 def system_flow_qa(state: State):
 
-    messages = str(state["messages"][-10:])
+    messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
     structured_conversation = extract_messages(messages)
 
-    # retriever = load_faiss_index("mobile_ui")
-    # retrievalQA = RetrievalQA.from_llm(llm=llm, retriever=retriever)
+    question = state["messages"][-1].content
+
+    response_langauge = "English"
+
+    is_arabic = contains_arabic(question)
+
+    if is_arabic:
+        response_langauge = "Arabic"
+        question = translate_question(question=question, llm=llm)
+
+    faiss_index = load_faiss_index("system_flow")
+    context = retrieve_context(faiss_index, question, llm)
+
+
+    print("retrieval Context:", context)
 
     prompt = PromptTemplate(
         input_variables=["messages"],
-        template="""Answer the last question:\n {messages}\n
+        template="""Answer the last question:\n\n {messages}\n
 
-        - Your answers should be verbose, detailed.
-        - Respond in the same language as the client's question.
+        - The context: {context}
+
+        - Your answers should be concise and accurate.
+        - Respond in {response_langauge}.
         """,
     )
 
     rag_chain = (
-        {"messages": RunnablePassthrough()}
+        RunnablePassthrough()
         | prompt
         | llm
     )
 
-    response = rag_chain.invoke(structured_conversation)
+    response = rag_chain.invoke({"context": context["result"], "messages": structured_conversation, "response_langauge": response_langauge})
     return {"messages": [response]}
 
 
@@ -394,9 +414,8 @@ def recommend_doctor(state: State):
     """
 
     payload = state["payload"]
-    messages = str(state["messages"][-10:])
+    messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
 
-    print("Messages in state:", messages)
     print("Payload in state:", payload)
 
     user_role = payload.get("role")
@@ -411,8 +430,6 @@ def recommend_doctor(state: State):
     structured_conversation = extract_messages(messages)
 
     question = state["messages"][-1].content
-
-    print("structured_conversation", structured_conversation)
 
     system_message = ChatPromptTemplate.from_messages([
         (
@@ -437,14 +454,14 @@ def recommend_doctor(state: State):
             - Respond in the same language as the client's question.
 
             **Context:**
-            - **Previous Human\AI Messages Context:**\n {messages}\n
+            - **Previous Human AI Messages Context:**\n {messages}\n
             - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
 
             **Expected Output:**
             - A structured response recommending the best doctor(s) for the symptoms and their location.
             """
         ),
-        ("human", question)
+        ("user", question)
     ])
 
     proper_nouns = query_doctors_from_db(db)
@@ -455,9 +472,7 @@ def recommend_doctor(state: State):
 
     docs = process_documents(formatted_output)
     faiss_index = create_faiss_index(docs, embeddings)
-
-    latest_message = state["messages"][-1].content
-    context = retrieve_context(faiss_index, latest_message, llm)
+    context = retrieve_context(faiss_index, question, llm)
 
     response = generate_response(system_message=system_message, context=context, messages=structured_conversation, llm=llm)
 

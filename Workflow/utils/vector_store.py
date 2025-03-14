@@ -81,9 +81,9 @@ def load_faiss_index(directory: str):
 
     # Load FAISS retriever using LangChain's method
     try:
-        retriever = FAISS.load_local(directory, embeddings, allow_dangerous_deserialization=True)
+        faiss_index = FAISS.load_local(directory, embeddings, allow_dangerous_deserialization=True)
         print("✅ FAISS index loaded successfully.")
-        return retriever.as_retriever()
+        return faiss_index
     except Exception as e:
         print(f"❌ Failed to load FAISS index. Error: {e}")
         return None
@@ -117,12 +117,12 @@ def create_db_from_local_pdf(file_path: str) -> FAISS:
     documents = loader.load()
 
     # Split the documents into chunks
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=100, chunk_overlap=50)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     docs = text_splitter.split_documents(documents)
 
     # Create the FAISS vector store
     db = FAISS.from_documents(docs, embeddings)
 
-    db.save_local("mobile_ui")
+    db.save_local("system_flow")
 
-# create_db_from_local_pdf("Data Prepration\mobile design - english.pdf")
+# create_db_from_local_pdf("Data Prepration\Mobile Application Design Documentation.pdf")

@@ -10,7 +10,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 from langchain_core.runnables import RunnablePassthrough
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
 from langchain.chains import RetrievalQA
 from langchain.schema import Document
 from langchain_community.vectorstores import FAISS
@@ -237,3 +239,28 @@ def generate_response(
 
     # Invoke the chain with the prepared input data
     return chain.invoke(input_data)
+
+
+
+def translate_question(question: str, llm: Any):
+
+    prompt = PromptTemplate(
+        input_variables=["question"],
+        template="""Translate this question to English:\n {question}\n""",
+    )
+
+    rag_chain = (
+        RunnablePassthrough()
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+
+    response = rag_chain.invoke({"question": question})
+    return response
+
+
+def contains_arabic(text: str) -> bool:
+    """Check if the given text contains Arabic characters."""
+    arabic_pattern = re.compile("[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+")
+    return bool(arabic_pattern.search(text))

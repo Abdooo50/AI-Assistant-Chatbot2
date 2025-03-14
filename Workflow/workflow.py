@@ -45,11 +45,11 @@ class Workflow:
 
     def get_response(self, question: str, payload: dict) -> str:
         """
-        Get a response from the workflow by processing the human's question.
+        Get a response from the workflow by processing the user's question.
         The payload (decoded JWT token) is included in the input state.
 
         Args:
-            question (str): The human's question.
+            question (str): The user's question.
             payload (dict): The decoded JWT token payload.
 
         Returns:
@@ -59,7 +59,7 @@ class Workflow:
         try:
             # Include the payload in the input state
             events = self.graph.stream(
-                {"messages": [{"role": "human", "content": question}], "payload": payload},
+                {"messages": [{"role": "user", "content": question}], "payload": payload},
                 config,
                 stream_mode="values",
             )

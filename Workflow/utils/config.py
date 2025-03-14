@@ -1,27 +1,33 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.utilities import SQLDatabase
-
-from psycopg_pool import ConnectionPool # type: ignore
+from psycopg_pool import ConnectionPool  # type: ignore
 
 
 class Config:
-    # Database configuration for MSSQL
-    MSSQL_DATABASE_URI = "mssql+pyodbc://@ASUS/MosefakDB?driver=ODBC+Driver+17+for+SQL+Server&Trusted_Connection=yes"
-
-    # Database configuration for PostgreSQL
-    POSTGRES_DB_URI = "postgresql://postgres:12345@localhost:5432/postgres?sslmode=prefer"
-    POSTGRES_CONNECTION_KWARGS = {
-        "autocommit": True,
-        "prepare_threshold": 0,
-    }
-
-    # Google Generative AI configuration
-    MODEL_NAME = "gemini-2.0-flash-001"
-    EMBEDDING_MODEL_NAME = "models/text-embedding-004"
-    TEMPERATURE = 0
-
     def __init__(self):
+        # Load environment variables from .env file if needed
+        from dotenv import load_dotenv
+        load_dotenv()
+
+        # Database configuration for MSSQL
+        self.MSSQL_DATABASE_URI = os.getenv("MSSQL_DATABASE_URI")
+
+        # Database configuration for PostgreSQL
+        self.POSTGRES_DB_URI = os.getenv("POSTGRES_DB_URI")
+        self.POSTGRES_CONNECTION_KWARGS = {
+            "autocommit": os.getenv("POSTGRES_AUTOCOMMIT", "True").lower() == "true",
+            "prepare_threshold": int(os.getenv("POSTGRES_PREPARE_THRESHOLD", 0)),
+        }
+
+        # Google Generative AI configuration
+        self.MODEL_NAME = os.getenv("MODEL_NAME")
+        self.EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME")
+        self.TEMPERATURE = float(os.getenv("TEMPERATURE", 0))
+
+        # Application settings
+        self.NUMBER_OF_LAST_MESSAGES = int(os.getenv("NUMBER_OF_LAST_MESSAGES", -10))
+
         # Initialize PostgreSQL connection pool
         self.pool = ConnectionPool(
             conninfo=self.POSTGRES_DB_URI,
