@@ -1,7 +1,7 @@
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_community.utilities import SQLDatabase
 from psycopg_pool import ConnectionPool  # type: ignore
+import pyodbc
 
 
 class Config:
@@ -10,8 +10,13 @@ class Config:
         from dotenv import load_dotenv
         load_dotenv()
 
-        # Database configuration for MSSQL
-        self.MSSQL_DATABASE_URI = os.getenv("MSSQL_DATABASE_URI")
+
+        self.mosefak_app_conn_str = (
+        "DRIVER={ODBC Driver 17 for SQL Server};"
+        "SERVER=ASUS;"
+        "DATABASE=mosefak-app;"
+        "Trusted_Connection=yes;")
+
 
         # Database configuration for PostgreSQL
         self.POSTGRES_DB_URI = os.getenv("POSTGRES_DB_URI")
@@ -26,7 +31,7 @@ class Config:
         self.TEMPERATURE = float(os.getenv("TEMPERATURE", 0))
 
         # Application settings
-        self.NUMBER_OF_LAST_MESSAGES = int(os.getenv("NUMBER_OF_LAST_MESSAGES", -10))
+        self.NUMBER_OF_LAST_MESSAGES = int(os.getenv("NUMBER_OF_LAST_MESSAGES", -5))
 
         # Initialize PostgreSQL connection pool
         self.pool = ConnectionPool(
@@ -46,7 +51,7 @@ class Config:
     @property
     def llm(self):
         return ChatGoogleGenerativeAI(
-            model=f"models/{self.MODEL_NAME}",
+            model=f"{self.MODEL_NAME}",
             google_api_key=self.get_google_api_key(),
             temperature=self.TEMPERATURE
         )
@@ -59,8 +64,8 @@ class Config:
         )
 
     @property
-    def mssql_db(self):
-        return SQLDatabase.from_uri(self.MSSQL_DATABASE_URI)
+    def mosefak_app_db(self):
+        return pyodbc.connect(self.mosefak_app_conn_str)
 
     @property
     def postgres_pool(self):

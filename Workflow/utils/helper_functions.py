@@ -1,4 +1,5 @@
 import ast
+import pydoc
 import re
 import textwrap
 from typing import Any, Dict, List, Optional, Tuple
@@ -42,6 +43,34 @@ def remove_sql_block(input_string: str) -> str:
 
 
 
+def execute_query(conn, query):
+    """
+    Executes an SQL query safely.
+
+    Args:
+        conn: The active database connection.
+        query (str): The SQL query to execute.
+
+    Returns:
+        list: The query results as a list of tuples.
+    """
+    if query.lower() == "not available":
+        return "No data available."
+
+    is_safe, message = is_safe_sql_query(query)
+    if not is_safe:
+        return f"Blocked due to security policy: {message}"
+
+    try:
+        with conn.cursor() as cursor:  # Use context manager for cursor
+            cursor.execute(query)
+            result = cursor.fetchall()
+            return [tuple(row) for row in result]
+    except Exception as e:
+        return f"Query execution error: {str(e)}"
+
+
+
 def extract_messages(input_string):
     """
     Extracts human and AI messages from the input string.
@@ -80,27 +109,17 @@ def extract_messages(input_string):
 
 
 def query_as_list(db, query):
-    # Execute the query
-    res = db.run(query)
-    
-    # Parse the result as a list of lists (rows)
-    try:
-        rows = ast.literal_eval(res)
-    except (ValueError, SyntaxError) as e:
-        raise ValueError(f"Failed to parse query result: {e}")
-    
-    # Ensure the result is a list of lists (or tuples)
-    if not isinstance(rows, list) or not all(isinstance(row, (list, tuple)) for row in rows):
-        raise ValueError("Query result is not in the expected format (list of lists/tuples).")
-    
-    # Remove any empty or null values within rows
-    cleaned_rows = [
-        [str(el).strip() for el in row if el is not None and str(el).strip()]
-        for row in rows
-    ]
-    
-    # Return the cleaned rows as a list of tuples
-    return [tuple(row) for row in cleaned_rows]
+    cursor = db.cursor()
+    cursor.execute(query)
+    res = cursor.fetchall() or []  # Ensure it's always a list
+    cursor.close()
+
+    print(f"Raw query result: {res}")  # Debugging line
+
+    # Convert rows to a list of tuples (ensuring it's JSON serializable)
+    cleaned_rows = [tuple(row) for row in res]
+
+    return cleaned_rows
 
 
 def query_doctors_from_db(db) -> List[Tuple]:
@@ -116,19 +135,23 @@ def query_doctors_from_db(db) -> List[Tuple]:
     query_result = query_as_list(db, """
         SELECT 
             'Dr. ' + u.FirstName + ' ' + u.LastName AS DoctorName,
-            COALESCE(STRING_AGG(wt.DayOfWeek, ', '), 'Not available') AS WorkingDays,
+            COALESCE(STRING_AGG(wt.Day, ', '), 'Not available') AS WorkingDays,
             COALESCE(ca.Street, 'Unknown Street') AS Street,
             COALESCE(ca.City, 'Unknown City') AS City,
             COALESCE(ca.Country, 'Unknown Country') AS Country,
-            COALESCE(STRING_AGG(sp.Name, ', '), 'No specialization') AS Specializations
-        FROM dbo.Doctors d
-        JOIN Security.Users u ON d.AppUserId = u.Id
-        LEFT JOIN dbo.WorkingTimes wt ON d.Id = wt.DoctorId
-        LEFT JOIN dbo.ClinicAddresses ca ON d.Id = ca.DoctorId
-        LEFT JOIN dbo.Specializations sp ON d.Id = sp.DoctorId
+            COALESCE(STRING_AGG(CAST(sp.Name AS NVARCHAR(MAX)), ', '), 'No specialization') AS Specializations
+        FROM [mosefak-app].[dbo].[Doctors] d
+        JOIN [mosefak-management].[Security].[Users] u ON d.AppUserId = u.Id
+        LEFT JOIN [mosefak-app].[dbo].[Clinics] ca ON d.Id = ca.DoctorId
+        LEFT JOIN [mosefak-app].[dbo].[WorkingTimes] wt ON ca.Id = wt.ClinicId
+        LEFT JOIN [mosefak-app].[dbo].[Specializations] sp ON d.Id = sp.DoctorId
         GROUP BY u.FirstName, u.LastName, ca.Street, ca.City, ca.Country;
     """)
-    return query_result
+
+    # Format doctor information into a readable string
+    formatted_output = format_doctors(query_result)
+
+    return formatted_output
 
 
 def format_doctors(doctors: List[Tuple]) -> str:
@@ -142,15 +165,17 @@ def format_doctors(doctors: List[Tuple]) -> str:
     - str: Formatted doctor information.
     """
     if not doctors:
-        return ""
+        return "No doctors available."
 
     return "\n".join([
-        f"{doctor[0]} is working on {doctor[1]} at {doctor[2]}, {doctor[3]}, {doctor[4]}, and specializes in {doctor[5]}."
+        f"{doctor[0]} is working on {doctor[1]} at {doctor[2]}, {doctor[3]}, {doctor[4]}, specializes in {doctor[5]}, "
+        # f"has {doctor[6]} years of experience, and charges {doctor[7]:.2f} for a consultation."
         for doctor in doctors
     ])
 
 
-def process_documents(text: str) -> List[Document]:
+
+def create_faiss_index(text: str, embeddings: Any) -> FAISS:
     """
     Process raw text into Document objects and split them into chunks.
 
@@ -162,21 +187,10 @@ def process_documents(text: str) -> List[Document]:
     """
     documents = [Document(page_content=text)]
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    return text_splitter.split_documents(documents)
+    docs = text_splitter.split_documents(documents)
+    faiss_index = FAISS.from_documents(docs, embeddings)
+    return faiss_index
 
-
-def create_faiss_index(documents: List[Document], embeddings) -> FAISS:
-    """
-    Create a FAISS vector store from the given documents.
-
-    Parameters:
-    - documents (List[Document]): Processed documents.
-    - embeddings: Embedding model for FAISS index creation.
-
-    Returns:
-    - FAISS: The created FAISS index.
-    """
-    return FAISS.from_documents(documents, embeddings)
 
 
 def retrieve_context(faiss_index: FAISS, query: str, llm) -> Dict[str, str]:
@@ -246,7 +260,11 @@ def translate_question(question: str, llm: Any):
 
     prompt = PromptTemplate(
         input_variables=["question"],
-        template="""Translate this question to English:\n {question}\n""",
+        template=
+        """Translate this question to English:\n {question}\n\n
+
+        Important: Only return the Translated Question to English
+        """,
     )
 
     rag_chain = (
@@ -257,6 +275,8 @@ def translate_question(question: str, llm: Any):
     )
 
     response = rag_chain.invoke({"question": question})
+
+    print("Translated Q: ", response)
     return response
 
 
@@ -264,3 +284,22 @@ def contains_arabic(text: str) -> bool:
     """Check if the given text contains Arabic characters."""
     arabic_pattern = re.compile("[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]+")
     return bool(arabic_pattern.search(text))
+
+
+def is_safe_sql_query(query):
+    """
+    Validates if the given SQL query is safe by preventing DELETE, UPDATE, TRUNCATE, DROP, and ALTER operations.
+
+    :param query: SQL query as a string
+    :return: Tuple (is_safe, message), where is_safe is a boolean indicating safety
+    """
+    # Define forbidden SQL keywords
+    forbidden_keywords = {"delete", "update", "truncate", "drop", "alter"}
+    query_lower = query.strip().lower()
+
+    # Check if query contains any forbidden keywords
+    if any(keyword in query_lower for keyword in forbidden_keywords):
+        return False, "Error: Unsafe SQL operation detected."
+
+    # Query is safe
+    return True, "Query is safe to execute."

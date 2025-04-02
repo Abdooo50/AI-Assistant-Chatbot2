@@ -1,5 +1,5 @@
 from Workflow.utils.config import Config
-from Workflow.utils.helper_functions import contains_arabic, create_faiss_index, extract_messages, format_doctors, generate_response, process_documents, query_doctors_from_db, remove_sql_block, retrieve_context, translate_question
+from Workflow.utils.helper_functions import contains_arabic, create_faiss_index, execute_query, extract_messages, generate_response, query_doctors_from_db, remove_sql_block, retrieve_context, translate_question
 from Workflow.utils.tables_info import load_tables_info
 from Workflow.utils.vector_store import load_faiss_index
 from Workflow.utils.state import State
@@ -11,11 +11,16 @@ from langchain_core.output_parsers import StrOutputParser
 from langsmith import traceable
 
 
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 config = Config()
 
-db = config.mssql_db
+mosefak_app_db = config.mosefak_app_db
 llm = config.llm
 embeddings = config.embeddings
 MODEL_NAME = config.MODEL_NAME
@@ -56,6 +61,7 @@ def classify_user_intent(state: State) -> str:
                     - How many patients visited the clinic last month?
                     - Show me the appointment schedule for Dr. Smith.
                     - List all available doctors next Monday.
+                    - I need to know information about my profile
 
             2. **medical_related**: The user is asking for general medical advice or information.
                 - Examples:
@@ -104,6 +110,8 @@ def classify_user_intent(state: State) -> str:
 @traceable(metadata={"llm": MODEL_NAME, "embedding": "FAISS"})
 def question_answer(state: State):
 
+    print("state['messages']", state["messages"])
+
     messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
     structured_conversation = extract_messages(messages)
 
@@ -123,18 +131,14 @@ def question_answer(state: State):
             """
             You are a virtual medical assistant designed to provide general health advices.\n
 
-            If the context is accurate and related to the question then **Supply your answer with it**.\n
-
             - **Previous Human AI Messages:**\n {messages}\n
-            - The Result from our data:\n {context}\n\n
-
+            {context_text}
 
             Respond based on the **The guidelines are as follows:**\n
 
             Scope of Advice:
             - Answering general health inquiries.
             - Offering guidance based on common symptoms.
-            - Avoid giving sensitive medical diagnoses, treatment prescriptions, or any specific therapeutic consultations.
 
             Responding to Out-of-Scope Questions:
             If you receive a question outside the scope of your role, respond politely as follows:
@@ -153,6 +157,11 @@ def question_answer(state: State):
 
     faiss_index = load_faiss_index("faiss_index")
     context = retrieve_context(faiss_index, question, llm)
+    
+    sorry_words = ["sorry", "عذرًا", "آسف", "نأسف", "متأسف"]  
+    context_text = (  
+        f"- The Result from our data:\n {context['result']}" 
+    ) if not any(word in context["result"].lower() for word in sorry_words) else " "
 
     print("Retrieved Context: ", context["result"])
 
@@ -162,7 +171,7 @@ def question_answer(state: State):
         | llm
     )
 
-    response = chain.invoke({"context": context["result"], "messages": structured_conversation, "response_langauge": response_langauge})
+    response = chain.invoke({"context_text": context_text, "messages": structured_conversation, "response_langauge": response_langauge})
 
     return {"messages": [response]}
 
@@ -209,7 +218,7 @@ def write_and_execute_query(state: State):
                 - **Previous Human AI Messages Context:**\n {messages}\n
                 - **Database Schema:**\n {tables_info}\n
                 - **Use this user id if needed:**\n {user_id}\n
-                - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
+                {context_text}
 
                 **Expected Output:**
                 ```sql
@@ -262,19 +271,25 @@ def write_and_execute_query(state: State):
                 You are an SQL expert specializing in SQL Server. Your role is to generate only a valid and optimized SQL query based on the user's request.
 
                 **Key Responsibilities:**
-                - Validate if the requested information can be retrieved using the available database schema.
+                - Validate if the requested information can be retrieved using the available databases schema.
                 - If the required data is available, generate an optimized SQL Server query.
-                - If the database does not contain relevant tables or fields, return **"Not Available"** as the SQL query.
+                - If the databases do not contain relevant tables or fields, return **"Not Available"** as the SQL query.
                 - Follow strict SQL Server syntax and best practices.
                 - Do **not** provide explanations—return only the SQL query or "Not Available".
 
                 **Context:**
                 - **Previous Human AI Messages Context:**\n {messages}\n
-                - **Database Schema:**\n {tables_info}\n
+                - **Databases Schema:**\n {tables_info}\n
                 - **Use this user id if needed:**\n {user_id}\n
                 - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
 
                 **Expected Output:**
+                **mosefak-app**
+                ```sql
+                -- Optimized SQL Query (or "Not Available" if the data is not retrievable)
+                ```
+
+                **mosefak-management**
                 ```sql
                 -- Optimized SQL Query (or "Not Available" if the data is not retrievable)
                 ```
@@ -285,24 +300,27 @@ def write_and_execute_query(state: State):
 
 
     # Query database for doctor information
-    proper_nouns = query_doctors_from_db(db)
+    proper_nouns = query_doctors_from_db(mosefak_app_db)
 
-    # Format doctor information into a readable string
-    formatted_output = format_doctors(proper_nouns)
-
-    # Process documents and create FAISS index
-    docs = process_documents(formatted_output)
-    faiss_index = create_faiss_index(docs, embeddings)
+    faiss_index = create_faiss_index(proper_nouns, embeddings)
 
     # Retrieve relevant context using the latest message
     context = retrieve_context(faiss_index, question, llm)
 
+    context_text = (
+        f"- **The Unique Values to correct user spelling or use for filters**:\n {context}"
+    ) if not any(word in context["result"].lower() for word in ["sorry", "عذرًا", "آسف", "نأسف", "متأسف"]) \
+    else ""
+
     input_data = {
         "messages": structured_conversation,
-        "context": context['result'],
+        "context_text": context_text,
         "user_id": user_id,
         "tables_info": tables_info
     }
+
+    print("Messages: ", messages)
+    print("context_text: ", context_text)
 
     # Generate response using the chain
     chain = (
@@ -312,15 +330,19 @@ def write_and_execute_query(state: State):
         | StrOutputParser()
     )
 
+    # Invoke the chain to get the AI-generated response
     response = chain.invoke(input_data)
+    logger.info("Successfully retrieved response from chain")
 
     cleaned_query = remove_sql_block(response)
+    logger.info(f"MosefakApp_SQLQuery: {cleaned_query}")
 
     # If the generated SQL query is "Not Available", return an empty result
     if cleaned_query.strip().lower() == "not available":
         state = {"SQLResult": "No data available for this request.", "SQLQuery": "Not Available"}
     else:
-        query_result = db.run(cleaned_query)
+        query_result = execute_query(mosefak_app_db, cleaned_query)
+        logger.info(f"Mosefak App SQL Result: {query_result}")
         state = {"SQLResult": query_result, "SQLQuery": cleaned_query}
 
     print("SQL Result:", state["SQLResult"])
@@ -336,13 +358,11 @@ def generate_answer(state: State):
     You are a professional AI assistant responding to a client. Your role is to provide clear, accurate, and well-structured answers.
 
     **Key Responsibilities:**
-    1. **Validation:** Ensure that the SQL query and result align with the user's question.
-    2. **Answer Generation:**
+    - **Answer Generation:**
         - If the SQL result correctly answers the question, provide a **precise and well-structured response**.
 
     **Client’s Input:**
     - **User Question:** {state["messages"][-1].content}
-    - **SQL Query:** {state["SQLQuery"]}
     - **SQL Result:** {state["SQLResult"]}
 
     **Response Guidelines:**
@@ -380,10 +400,11 @@ def system_flow_qa(state: State):
     print("retrieval Context:", context)
 
     prompt = PromptTemplate(
-        input_variables=["messages"],
-        template="""Answer the last question:\n\n {messages}\n
+        template="""Answer the question:\n\n {question}\n
 
-        - The context: {context}
+        - **The context**: {context}\n
+        - **Previous Human AI Messages Context:**\n {messages}\n
+        
 
         - Your answers should be concise and accurate.
         - Respond in {response_langauge}.
@@ -396,7 +417,7 @@ def system_flow_qa(state: State):
         | llm
     )
 
-    response = rag_chain.invoke({"context": context["result"], "messages": structured_conversation, "response_langauge": response_langauge})
+    response = rag_chain.invoke({"question": question,"context": context["result"], "messages": structured_conversation, "response_langauge": response_langauge})
     return {"messages": [response]}
 
 
@@ -422,7 +443,6 @@ def recommend_doctor(state: State):
     user_id = payload.get("user_id")
 
     if not user_role or not user_id:
-        print("❌ Missing user role or ID.")
         return {"messages": ["Error: Missing user role or ID."]}
 
 
@@ -464,14 +484,10 @@ def recommend_doctor(state: State):
         ("user", question)
     ])
 
-    proper_nouns = query_doctors_from_db(db)
-    formatted_output = format_doctors(proper_nouns)
+    # Query database for doctor information
+    proper_nouns = query_doctors_from_db(mosefak_app_db)
+    faiss_index = create_faiss_index(proper_nouns, embeddings)
 
-    if not formatted_output:
-        return {"messages": ["No doctors found in the database."]}
-
-    docs = process_documents(formatted_output)
-    faiss_index = create_faiss_index(docs, embeddings)
     context = retrieve_context(faiss_index, question, llm)
 
     response = generate_response(system_message=system_message, context=context, messages=structured_conversation, llm=llm)
