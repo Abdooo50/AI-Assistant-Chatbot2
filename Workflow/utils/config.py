@@ -10,13 +10,16 @@ class Config:
         from dotenv import load_dotenv
         load_dotenv()
 
-
+        # Construct connection string using environment variables
         self.mosefak_app_conn_str = (
-        "DRIVER={ODBC Driver 17 for SQL Server};"
-        "SERVER=ASUS;"
-        "DATABASE=mosefak-app;"
-        "Trusted_Connection=yes;")
-
+            "DRIVER={ODBC Driver 17 for SQL Server};"
+            f"SERVER={os.getenv('MOSEFAK_APP_DATABASE_SERVER')};"
+            f"DATABASE={os.getenv('MOSEFAK_APP_DATABASE_NAME')};"
+            f"UID={os.getenv('MOSEFAK_APP_DATABASE_USER')};"
+            f"PWD={os.getenv('MOSEFAK_APP_DATABASE_PASSWORD')};"
+            f"Encrypt={os.getenv('MOSEFAK_APP_ENCRYPT')};"
+            f"TrustServerCertificate={os.getenv('MOSEFAK_APP_TRUST_SERVER_CERTIFICATE')};"
+        )
 
         # Database configuration for PostgreSQL
         self.POSTGRES_DB_URI = os.getenv("POSTGRES_DB_URI")
@@ -35,7 +38,7 @@ class Config:
 
         # Initialize PostgreSQL connection pool
         self.pool = ConnectionPool(
-            conninfo=self.POSTGRES_DB_URI,
+            conninfo=str(self.POSTGRES_DB_URI),
             max_size=20,
             kwargs=self.POSTGRES_CONNECTION_KWARGS
         )
@@ -50,16 +53,17 @@ class Config:
 
     @property
     def llm(self):
-        return ChatGoogleGenerativeAI(
+        chat_model = ChatGoogleGenerativeAI(
             model=f"{self.MODEL_NAME}",
             google_api_key=self.get_google_api_key(),
             temperature=self.TEMPERATURE
         )
+        return chat_model
 
     @property
     def embeddings(self):
         return GoogleGenerativeAIEmbeddings(
-            model=self.EMBEDDING_MODEL_NAME,
+            model=str(self.EMBEDDING_MODEL_NAME),
             google_api_key=self.get_google_api_key()
         )
 

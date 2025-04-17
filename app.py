@@ -3,9 +3,10 @@ import requests
 import random
 import string
 
-FASTAPI_URL = "http://127.0.0.1:8000"
+# FastAPI endpoint URL for communication
+FASTAPI_URL = "http://127.0.0.1:8000"  # Replace with your deployed FastAPI URL
 
-# Initialize session state
+# Initialize session state if not already present
 if "selected_chat" not in st.session_state:
     st.session_state.selected_chat = None
 if "chats" not in st.session_state:
@@ -13,8 +14,9 @@ if "chats" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "token" not in st.session_state:
-    st.session_state.token = ""
+    st.session_state.token = ""  # Initialize token for the user
 
+# Function to load all the chats for the logged-in user
 def load_chats(token):
     try:
         response = requests.get(f"{FASTAPI_URL}/chats", headers={"Authorization": f"Bearer {token}"})
@@ -25,6 +27,7 @@ def load_chats(token):
     except Exception as e:
         st.error(f"Error loading chats: {str(e)}")
 
+# Function to load the chat history for the selected thread
 def load_chat_history(thread_id, token):
     try:
         response = requests.post(
@@ -39,11 +42,13 @@ def load_chat_history(thread_id, token):
     except Exception as e:
         st.error(f"Error loading chat history: {str(e)}")
 
+# Function to generate a random chat name
 def generate_random_chat_name():
     letters = ''.join(random.choices(string.ascii_uppercase, k=3))
     numbers = ''.join(random.choices(string.digits, k=3))
     return f"Chat-{letters}{numbers}"
 
+# Function to create a new chat
 def create_new_chat(token):
     chat_name = generate_random_chat_name()
     try:
@@ -63,6 +68,7 @@ def create_new_chat(token):
     except Exception as e:
         st.error(f"Error creating chat: {str(e)}")
 
+# Function to delete a selected chat
 def delete_chat(thread_id, token):
     try:
         response = requests.delete(
@@ -81,6 +87,7 @@ def delete_chat(thread_id, token):
     except Exception as e:
         st.error(f"Error deleting chat: {str(e)}")
 
+# Function to delete all chats
 def delete_all_chats(token):
     try:
         response = requests.delete(
@@ -97,23 +104,46 @@ def delete_all_chats(token):
     except Exception as e:
         st.error(f"Error deleting all chats: {str(e)}")
 
+# Function to get display name for the chat (first user message as the display name)
 def get_display_name(chat, token):
     thread_id = chat["thread_id"]
-    response = requests.post(
-        f"{FASTAPI_URL}/chat",
-        json={"thread_id": thread_id},
-        headers={"Authorization": f"Bearer {token}"}
-    )
-    if response.status_code == 200:
-        history = response.json().get("history", [])
-        for msg in history:
-            if msg["role"] == "user":
-                return msg["content"][:50]  # Truncate for brevity
+    try:
+        response = requests.post(
+            f"{FASTAPI_URL}/chat",
+            json={"thread_id": thread_id},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        if response.status_code == 200:
+            history = response.json().get("history", [])
+            for msg in history:
+                if msg["role"] == "user":
+                    return msg["content"][:50]  # Truncate for brevity
+    except Exception as e:
+        st.error(f"Error getting display name: {str(e)}")
     return chat["chat_name"]
 
-# Token input at the top of the UI
+# Function to get JWT token from login credentials
+def get_jwt_token(email, password):
+    try:
+        # You can implement a direct call to your JWT token generator here if needed
+        # For now, we'll assume the token is provided directly by the user
+        return None
+    except Exception as e:
+        st.error(f"Error getting JWT token: {str(e)}")
+        return None
+
+# Streamlit UI setup
 st.title("AI Medical Assistant")
-st.session_state.token = st.text_input("Enter your API Token", value=st.session_state.token, type="password")
+
+# Token input with better error handling
+token_input = st.text_input("Enter your API Token", value=st.session_state.token, type="password")
+if token_input != st.session_state.token:
+    st.session_state.token = token_input
+    # Clear existing data when token changes
+    st.session_state.chats = []
+    st.session_state.selected_chat = None
+    st.session_state.messages = []
+
 st.image("mosefak.jpg", width=380)
 st.write("Get medical advice, book appointments, and healthcare inquiries!")
 st.divider()
@@ -121,20 +151,24 @@ st.divider()
 if not st.session_state.token:
     st.warning("Please enter a valid API token to proceed.")
 else:
+    # Try to load chats with the provided token
     if not st.session_state.chats:
-        load_chats(st.session_state.token)
+        with st.spinner("Loading chats..."):
+            load_chats(st.session_state.token)
 
-    # Sidebar
+    # Sidebar for chat management
     with st.sidebar:
         st.subheader("Chats")
         col1, col2 = st.columns([3, 1])
         with col1:
             if st.button("Create New Chat"):
-                create_new_chat(st.session_state.token)
+                with st.spinner("Creating new chat..."):
+                    create_new_chat(st.session_state.token)
         with col2:
             if st.button("Delete All", type="secondary"):
                 if st.dialog("Are you sure you want to delete all chats?"):
-                    delete_all_chats(st.session_state.token)
+                    with st.spinner("Deleting all chats..."):
+                        delete_all_chats(st.session_state.token)
         
         # Display chats as a clickable list with delete buttons
         for chat in st.session_state.chats:
@@ -143,10 +177,12 @@ else:
             with col1:
                 if st.button(chat_name, key=f"select_{chat['thread_id']}"):
                     st.session_state.selected_chat = chat["thread_id"]
-                    load_chat_history(chat["thread_id"], st.session_state.token)
+                    with st.spinner("Loading chat history..."):
+                        load_chat_history(chat["thread_id"], st.session_state.token)
             with col2:
                 if st.button("🗑️", key=f"delete_{chat['thread_id']}"):
-                    delete_chat(chat["thread_id"], st.session_state.token)
+                    with st.spinner("Deleting chat..."):
+                        delete_chat(chat["thread_id"], st.session_state.token)
 
     if st.session_state.selected_chat:
         for message in st.session_state.messages:
@@ -161,11 +197,12 @@ else:
             try:
                 thread_id = st.session_state.selected_chat
                 payload = {"question": user_question, "thread_id": thread_id}
-                response = requests.post(
-                    f"{FASTAPI_URL}/ask",
-                    json=payload,
-                    headers={"Authorization": f"Bearer {st.session_state.token}"}
-                )
+                with st.spinner("Getting response..."):
+                    response = requests.post(
+                        f"{FASTAPI_URL}/ask",
+                        json=payload,
+                        headers={"Authorization": f"Bearer {st.session_state.token}"}
+                    )
                 if response.status_code == 200:
                     assistant_response = response.json().get("response", "No response received.")
                 else:

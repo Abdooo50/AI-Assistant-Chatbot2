@@ -9,6 +9,7 @@ from Workflow.utils.nodes import (
     recommend_doctor,
     system_flow_qa,
     write_and_execute_query,
+    handle_out_of_scope,
 )
 from Workflow.utils.state import State
 
@@ -21,6 +22,7 @@ class Workflow:
         self.graph_builder.add_sequence([write_and_execute_query, generate_answer])
         self.graph_builder.add_node("system_flow_qa", system_flow_qa)
         self.graph_builder.add_node("recommend_doctor", recommend_doctor)
+        self.graph_builder.add_node("handle_out_of_scope", handle_out_of_scope)
 
         self.graph_builder.add_conditional_edges(
             START,
@@ -29,7 +31,8 @@ class Workflow:
                 "query_related": "write_and_execute_query",
                 "medical_related": "question_answer",
                 "system_flow_related": "system_flow_qa",
-                "doctor_recommendation_related": "recommend_doctor"
+                "doctor_recommendation_related": "recommend_doctor",
+                "out_of_scope": "handle_out_of_scope"
             }
         )
 
@@ -38,6 +41,7 @@ class Workflow:
         self.graph_builder.add_edge("generate_answer", END)
         self.graph_builder.add_edge("system_flow_qa", END)
         self.graph_builder.add_edge("recommend_doctor", END)
+        self.graph_builder.add_edge("handle_out_of_scope", END)
 
         self.checkpointer = PostgresSaver(config.postgres_pool)
         self.graph = self.graph_builder.compile(checkpointer=self.checkpointer)
@@ -73,4 +77,22 @@ class Workflow:
             return last_message if last_message else "No results found."
         except Exception as e:
             print(f"An error occurred during workflow execution: {e}")
-            return "An error occurred while processing the request."
+            
+            # Check if it's an out-of-scope question
+            from Workflow.utils.helper_functions import contains_arabic
+            
+            # Determine language
+            is_arabic = contains_arabic(question)
+            
+            if is_arabic:
+                return """
+                أنا مساعد طبي مصمم لمساعدتك في المسائل المتعلقة بالصحة. للأسف، لا يمكنني تقديم معلومات حول الأسئلة خارج النطاق الطبي. 
+                يمكنني مساعدتك في أمور مثل النصائح الصحية العامة، ومعلومات عن الأعراض، والتوصية بالأطباء المناسبين. 
+                هل يمكنني مساعدتك في أي استفسار طبي؟
+                """
+            else:
+                return """
+                I'm a medical assistant designed to help you with health-related matters. Unfortunately, I can't provide information about topics outside the medical domain. 
+                I can assist you with things like general health advice, information about symptoms, and recommending appropriate doctors. 
+                Can I help you with any medical questions?
+                """

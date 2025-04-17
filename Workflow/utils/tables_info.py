@@ -185,7 +185,7 @@ CREATE TABLE [mosefak-management].[Security].[Users] (
 
 admin_tables_info = \
 '''
-CREATE TABLE [Awards] (
+CREATE TABLE [mosefak-app].[dbo].[Awards] (
     [Id] int NOT NULL IDENTITY,
     [Title] nvarchar(max) NOT NULL,
     [DateReceived] date NOT NULL,
@@ -205,7 +205,7 @@ CREATE TABLE [Awards] (
     CONSTRAINT [FK_Awards_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [Clinics] (
+CREATE TABLE [mosefak-app].[dbo].[Clinics] (
     [Id] int NOT NULL IDENTITY,
     [Name] nvarchar(max) NOT NULL,
     [Street] nvarchar(max) NOT NULL,
