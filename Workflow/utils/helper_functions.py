@@ -1,6 +1,7 @@
 import ast
 import hashlib
 import math
+import os
 import pydoc
 import re
 import time
@@ -154,12 +155,134 @@ def maintain_cache():
         del query_cache[key]
 
 
-def validate_query_security(query: str) -> Tuple[bool, str]:
+def adapt_query_for_linked_server(query: str) -> str:
+    """
+    Adapt SQL query to use linked server syntax.
+    
+    Args:
+        query: SQL query string
+        
+    Returns:
+        str: Adapted query with linked server references
+    """
+    # Get linked server name from environment variable with fallback
+    linked_server = os.getenv("MOSEFAK_LINKED_SERVER_NAME", "mosefak-linked-server")
+    
+    # Replace direct database references with linked server syntax
+    import re
+    
+    # Replace table references in FROM and JOIN clauses
+    query = re.sub(
+        r'\[mosefak-app\]\.\[dbo\]\.(\[[\w-]+\])',
+        f'[{linked_server}].[mosefak-app].[dbo].\\1',
+        query
+    )
+    
+    # Handle unbracketed references
+    query = re.sub(
+        r'FROM\s+(\w+)',
+        f'FROM [{linked_server}].[mosefak-app].[dbo].\\1',
+        query
+    )
+    
+    query = re.sub(
+        r'JOIN\s+(\w+)',
+        f'JOIN [{linked_server}].[mosefak-app].[dbo].\\1',
+        query
+    )
+    
+    return query
+
+
+def inject_user_context(query: str, user_id: str, user_role: str) -> str:
+    """
+    Inject user context into SQL query for proper filtering.
+    
+    Args:
+        query: SQL query string
+        user_id: User ID for filtering
+        user_role: User role for determining filter strategy
+        
+    Returns:
+        str: Query with user context filters
+    """
+    # Special case for role queries
+    if "role" in query.lower() and "select" in query.lower():
+        if user_role:
+            return f"SELECT '{user_role}' AS UserRole"
+    
+    # For admin users, don't add filters
+    if user_role == "Admin":
+        return query
+    
+    query_lower = query.lower()
+    
+    # Don't modify queries that already have user context
+    if user_id in query:
+        return query
+    
+    # For Doctor role, add DoctorId filter to relevant tables
+    if user_role == "Doctor":
+        # Check if query is about doctor's patients
+        if "patient" in query_lower or "appointment" in query_lower:
+            # Add WHERE clause or AND condition for DoctorId
+            if "where" in query_lower:
+                # Find the position after WHERE clause
+                where_pos = query_lower.find("where") + 5
+                # Insert the condition after WHERE
+                return query[:where_pos] + f" DoctorId = '{user_id}' AND" + query[where_pos:]
+            else:
+                # Find if there's ORDER BY, GROUP BY, or HAVING
+                clause_keywords = ["order by", "group by", "having"]
+                clause_pos = float('inf')
+                
+                for keyword in clause_keywords:
+                    pos = query_lower.find(keyword)
+                    if pos != -1 and pos < clause_pos:
+                        clause_pos = pos
+                
+                if clause_pos != float('inf'):
+                    # Insert WHERE before the clause
+                    return query[:clause_pos] + f" WHERE DoctorId = '{user_id}'" + query[clause_pos:]
+                else:
+                    # Append WHERE at the end
+                    return query + f" WHERE DoctorId = '{user_id}'"
+    
+    # For Patient role, add PatientId filter to relevant tables
+    elif user_role == "Patient":
+        # Add WHERE clause or AND condition for AppUserId
+        if "where" in query_lower:
+            # Find the position after WHERE clause
+            where_pos = query_lower.find("where") + 5
+            # Insert the condition after WHERE
+            return query[:where_pos] + f" AppUserId = '{user_id}' AND" + query[where_pos:]
+        else:
+            # Find if there's ORDER BY, GROUP BY, or HAVING
+            clause_keywords = ["order by", "group by", "having"]
+            clause_pos = float('inf')
+            
+            for keyword in clause_keywords:
+                pos = query_lower.find(keyword)
+                if pos != -1 and pos < clause_pos:
+                    clause_pos = pos
+            
+            if clause_pos != float('inf'):
+                # Insert WHERE before the clause
+                return query[:clause_pos] + f" WHERE AppUserId = '{user_id}'" + query[clause_pos:]
+            else:
+                # Append WHERE at the end
+                return query + f" WHERE AppUserId = '{user_id}'"
+    
+    return query
+
+
+def validate_query_security(query: str, user_role: str = None) -> Tuple[bool, str]:
     """
     Comprehensive validation of SQL query for security issues.
     
     Args:
         query: SQL query string
+        user_role: User role for permission-based validation
         
     Returns:
         Tuple of (is_safe, message)
@@ -167,6 +290,37 @@ def validate_query_security(query: str) -> Tuple[bool, str]:
     # Convert to lowercase for case-insensitive checks
     query_lower = query.strip().lower()
     
+    # Special case for role queries
+    if "role" in query_lower and "select" in query_lower and user_role:
+        return True, "Role query is allowed"
+    
+    # Admin users bypass most security checks but still protect against dangerous operations
+    if user_role == "Admin":
+        # Check for SQL injection patterns
+        sql_injection_patterns = [
+            r";\s*select", r";\s*insert", r";\s*update", r";\s*delete",
+            r"/\*", r"\*/", r"xp_cmdshell", r"sp_executesql"
+        ]
+        
+        for pattern in sql_injection_patterns:
+            if re.search(pattern, query_lower):
+                return False, f"Potential SQL injection detected: {pattern}"
+        
+        # Check for extremely dangerous operations even for admin
+        dangerous_operations = [
+            r"\bdrop\s+database\b", r"\bdrop\s+server\b", 
+            r"\btruncate\s+table\b", r"\bdelete\s+from\b\s+.*\bwhere\b\s+1\s*=\s*1",
+            r"\bupdate\b\s+.*\bwhere\b\s+1\s*=\s*1"
+        ]
+        
+        for pattern in dangerous_operations:
+            if re.search(pattern, query_lower):
+                return False, f"Dangerous operation not allowed: {pattern}"
+        
+        # Admin can perform other operations
+        return True, "Query is safe to execute"
+    
+    # For non-admin users, apply strict security checks
     # Check for SQL injection patterns
     sql_injection_patterns = [
         r";\s*select", r";\s*insert", r";\s*update", r";\s*delete",
@@ -218,7 +372,7 @@ def execute_parameterized_query(conn, query: str, params: dict = None, user_id: 
         query: SQL query with parameter placeholders
         params: Dictionary of parameter values
         user_id: User ID for role-specific caching
-        user_role: User role for role-specific caching
+        user_role: User role for permission-based query execution
         
     Returns:
         Query results or error information
@@ -232,7 +386,7 @@ def execute_parameterized_query(conn, query: str, params: dict = None, user_id: 
         return cached_result
         
     # Validate query before execution
-    is_safe, message = validate_query_security(query)
+    is_safe, message = validate_query_security(query, user_role)
     if not is_safe:
         return f"Blocked due to security policy: {message}"
     
@@ -251,11 +405,35 @@ def execute_parameterized_query(conn, query: str, params: dict = None, user_id: 
             
             return processed_result
     except Exception as e:
-        error_result = handle_query_error(e, query)
+        error_result = handle_query_error(e, query, user_role=user_role)
         return error_result
 
 
-def handle_query_error(error, query, max_retries=3):
+def execute_query(conn, query, user_id=None, user_role=None):
+    """
+    Wrapper function for execute_parameterized_query with linked server support.
+    
+    Args:
+        conn: Database connection
+        query: SQL query string
+        user_id: User ID for role-specific filtering and caching
+        user_role: User role for permission-based query execution
+        
+    Returns:
+        Query results or error information
+    """
+    # First, adapt the query for linked server if needed
+    adapted_query = adapt_query_for_linked_server(query)
+    
+    # Then inject user context based on role
+    if user_id and user_role:
+        adapted_query = inject_user_context(adapted_query, user_id, user_role)
+    
+    # Execute the query with enhanced security and error handling
+    return execute_parameterized_query(conn, adapted_query, None, user_id, user_role)
+
+
+def handle_query_error(error, query, max_retries=3, user_role=None):
     """
     Enhanced error handling for SQL queries with retry logic and detailed error classification.
     
@@ -263,6 +441,7 @@ def handle_query_error(error, query, max_retries=3):
         error: The exception that occurred
         query: The SQL query that caused the error
         max_retries: Maximum number of retry attempts for transient errors
+        user_role: User role for permission-based error handling
         
     Returns:
         Error message or retry result
@@ -282,6 +461,16 @@ def handle_query_error(error, query, max_retries=3):
         # Retry logic would go here in a real implementation
         # For now, just return an error message
         return f"Transient error occurred. Would retry {max_retries} more times in production."
+    
+    # For admin users, provide more detailed error information
+    if user_role == "Admin":
+        return {
+            "error": f"Query execution error ({error_type})",
+            "details": error_str,
+            "query": query,
+            "error_code": error_code,
+            "suggestions": ["Check database connection", "Verify SQL syntax", "Check table names"]
+        }
     
     # Format user-friendly error message based on error type
     if error_type == "PERMISSION":
@@ -509,22 +698,6 @@ def generate_result_explanation(results, original_question):
     return f"Found {num_results} results that answer your question about '{original_question}'."
 
 
-def execute_query(conn, query, user_id=None, user_role=None):
-    """
-    Executes an SQL query safely with enhanced security and caching.
-
-    Args:
-        conn: The active database connection.
-        query (str): The SQL query to execute.
-        user_id: User ID for role-specific caching
-        user_role: User role for role-specific caching
-
-    Returns:
-        list: The query results as a list of tuples or error information.
-    """
-    return execute_parameterized_query(conn, query, None, user_id, user_role)
-
-
 def query_as_list(db, query, user_id=None, user_role=None):
     """
     Execute a query and return results as a list with enhanced error handling.
@@ -539,8 +712,15 @@ def query_as_list(db, query, user_id=None, user_role=None):
         list: Query results or error information
     """
     try:
+        # First, adapt the query for linked server if needed
+        adapted_query = adapt_query_for_linked_server(query)
+        
+        # Then inject user context based on role
+        if user_id and user_role:
+            adapted_query = inject_user_context(adapted_query, user_id, user_role)
+            
         cursor = db.cursor()
-        cursor.execute(query)
+        cursor.execute(adapted_query)
         res = cursor.fetchall() or []  # Ensure it's always a list
         cursor.close()
 
@@ -554,7 +734,7 @@ def query_as_list(db, query, user_id=None, user_role=None):
         
         return cleaned_rows
     except Exception as e:
-        return handle_query_error(e, query)
+        return handle_query_error(e, query, user_role=user_role)
 
 
 def query_doctors_from_db(db, user_id=None, user_role=None) -> List[Tuple]:
@@ -574,11 +754,14 @@ def query_doctors_from_db(db, user_id=None, user_role=None) -> List[Tuple]:
     # Get database name from environment variable with fallback
     db_name = os.getenv("MOSEFAK_APP_DATABASE_NAME", "mosefak-management")
     
+    # Get linked server name from environment variable with fallback
+    linked_server = os.getenv("MOSEFAK_LINKED_SERVER_NAME", "mosefak-linked-server")
+    
     # Check if the Doctors table exists before running the complex query
     try:
         test_query = f"""
         SELECT TOP 1 1 
-        FROM [{db_name}].[dbo].[Doctors]
+        FROM [{linked_server}].[mosefak-app].[dbo].[Doctors]
         """
         test_result = query_as_list(db, test_query, user_id, user_role)
         
@@ -598,11 +781,11 @@ def query_doctors_from_db(db, user_id=None, user_role=None) -> List[Tuple]:
                 COALESCE(ca.City, 'Unknown City') AS City,
                 COALESCE(ca.Country, 'Unknown Country') AS Country,
                 COALESCE(STRING_AGG(CAST(sp.Name AS NVARCHAR(MAX)), ', '), 'No specialization') AS Specializations
-            FROM [{db_name}].[dbo].[Doctors] d
+            FROM [{linked_server}].[mosefak-app].[dbo].[Doctors] d
             JOIN [{db_name}].[Security].[Users] u ON d.AppUserId = u.Id
-            LEFT JOIN [{db_name}].[dbo].[Clinics] ca ON d.Id = ca.DoctorId
-            LEFT JOIN [{db_name}].[dbo].[WorkingTimes] wt ON ca.Id = wt.ClinicId
-            LEFT JOIN [{db_name}].[dbo].[Specializations] sp ON d.Id = sp.DoctorId
+            LEFT JOIN [{linked_server}].[mosefak-app].[dbo].[Clinics] ca ON d.Id = ca.DoctorId
+            LEFT JOIN [{linked_server}].[mosefak-app].[dbo].[WorkingTimes] wt ON ca.Id = wt.ClinicId
+            LEFT JOIN [{linked_server}].[mosefak-app].[dbo].[Specializations] sp ON d.Id = sp.DoctorId
             GROUP BY u.FirstName, u.LastName, ca.Street, ca.City, ca.Country;
         """
         
@@ -613,7 +796,7 @@ def query_doctors_from_db(db, user_id=None, user_role=None) -> List[Tuple]:
         
         return formatted_output
     except Exception as e:
-        error_info = handle_query_error(e, query if 'query' in locals() else "Unknown query")
+        error_info = handle_query_error(e, query if 'query' in locals() else "Unknown query", user_role=user_role)
         return f"Error retrieving doctor information: {error_info}"
 
 

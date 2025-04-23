@@ -6,11 +6,7 @@ from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langsmith import traceable
 
-# Add the upload directory to the path to ensure we can access the files
-sys.path.append('/home/ubuntu/upload')
-
-# Load environment variables explicitly
-load_dotenv('/home/ubuntu/upload/.env')
+load_dotenv()
 
 from Workflow.utils.config import Config
 from Workflow.utils.helper_functions import (
@@ -146,6 +142,12 @@ def write_and_execute_query(state: State):
     if not user_role or not user_id:
         return {"error": "Missing user role or ID."}
     
+
+    print("user_id: ", user_id)
+    print("payload: ", payload)
+    print("user_role: ", user_role)
+    print("type(user_role): ", type(user_role))
+    
     # Load appropriate tables info based on role
     tables_info = load_tables_info(role=user_role)
     
@@ -162,6 +164,7 @@ def write_and_execute_query(state: State):
         print("Cache hit: Using cached result")
         return cached_result
     
+    
     try:
         # Classify query intent for better SQL generation
         query_intent = classify_query_intent(question, llm)
@@ -175,7 +178,7 @@ def write_and_execute_query(state: State):
             system_message = ChatPromptTemplate.from_messages([
                 (
                     "system",
-                    f"""
+                    """
                     You are an SQL expert specializing in SQL Server. Your role is to generate only a valid and optimized SQL query based on the user's request.
 
                     **Key Responsibilities:**
@@ -194,7 +197,6 @@ def write_and_execute_query(state: State):
                     - **Previous Human AI Messages Context:**\n {messages}\n
                     - **Database Schema:**\n {tables_info}\n
                     - **Use this user id if needed:**\n {user_id}\n
-                    - **Examples:**\n {examples}\n
                     {context_text}
 
                     **Expected Output:**
@@ -205,11 +207,12 @@ def write_and_execute_query(state: State):
                 ),
                 ("user", question)
             ])
+
         elif user_role == "Doctor":
             system_message = ChatPromptTemplate.from_messages([
                 (
                     "system",
-                    f"""
+                    """
                     You are an SQL expert specializing in SQL Server. Your role is to generate only a valid and optimized SQL query based on the user's request.
 
                     **Key Responsibilities:**
@@ -220,8 +223,7 @@ def write_and_execute_query(state: State):
                     - Do **not** provide explanations—return only the SQL query or "Not Available".
 
                     **Restrictions:**
-                    - Only allow queries for patients that the doctor is responsible for (e.g., patients with appointments linked to the doctor).
-                    - Do not allow queries that retrieve personal or sensitive information about patients not associated with the doctor.
+                    - Only allow access to private columns/tables (e.g., [ProblemDescription], [CancellationReason], [IsPaid], [Security].[Users]) if the query includes a filter matching the user's `AppUserId` with their own ID.
 
                     **Query Intent:** {query_intent}
                     
@@ -229,50 +231,47 @@ def write_and_execute_query(state: State):
                     - **Previous Human AI Messages Context:**\n {messages}\n
                     - **Database Schema:**\n {tables_info}\n
                     - **Use this user id if needed:**\n {user_id}\n
-                    - **Examples:**\n {examples}\n
-                    - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
+                    {context_text}
 
                     **Expected Output:**
                     ```sql
-                    -- Optimized SQL Query (or "Not Available" if the data is not retrievable)
                     ```
+                    (or "Not Available" if the data is not retrievable)
                     """
                 ),
                 ("user", question)
             ])
+
         elif user_role == "Admin":
+
             system_message = ChatPromptTemplate.from_messages([
                 (
                     "system",
-                    f"""
+                    """
                     You are an SQL expert specializing in SQL Server. Your role is to generate only a valid and optimized SQL query based on the user's request.
 
                     **Key Responsibilities:**
-                    - Validate if the requested information can be retrieved using the available databases schema.
+                    - Validate if the requested information can be retrieved using the available database schema.
                     - If the required data is available, generate an optimized SQL Server query.
-                    - If the databases do not contain relevant tables or fields, return **"Not Available"** as the SQL query.
+                    - If the database does not contain relevant tables or fields, return **"Not Available"** as the SQL query.
                     - Follow strict SQL Server syntax and best practices.
                     - Do **not** provide explanations—return only the SQL query or "Not Available".
+
+                    **Restrictions:**
+                    - Only allow access to private columns/tables (e.g., [ProblemDescription], [CancellationReason], [IsPaid], [Security].[Users]) if the query includes a filter matching the user's `AppUserId` with their own ID.
 
                     **Query Intent:** {query_intent}
                     
                     **Context:**
                     - **Previous Human AI Messages Context:**\n {messages}\n
-                    - **Databases Schema:**\n {tables_info}\n
+                    - **Database Schema:**\n {tables_info}\n
                     - **Use this user id if needed:**\n {user_id}\n
-                    - **Examples:**\n {examples}\n
-                    - **The Unique Values** context to correct user spelling or use for filters:\n {context}\n\n
+                    {context_text}
 
                     **Expected Output:**
-                    **mosefak-app**
                     ```sql
-                    -- Optimized SQL Query (or "Not Available" if the data is not retrievable)
                     ```
-
-                    **mosefak-management**
-                    ```sql
-                    -- Optimized SQL Query (or "Not Available" if the data is not retrievable)
-                    ```
+                    (or "Not Available" if the data is not retrievable)
                     """
                 ),
                 ("user", question)
@@ -302,6 +301,7 @@ def write_and_execute_query(state: State):
         }
 
         print("Messages: ", messages)
+        print("________________________________________________________________________")
         print("context_text: ", context_text)
 
         # Generate response using the chain
@@ -327,6 +327,7 @@ def write_and_execute_query(state: State):
         
         # Validate query security
         is_safe, message = validate_query_security(cleaned_query)
+        print("validate_query_security: ", message)
         if not is_safe:
             error_result = {
                 "SQLResult": f"Query blocked: {message}",
