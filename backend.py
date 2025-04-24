@@ -31,7 +31,7 @@ workflow = Workflow(config)
 # JWT Configuration from .env
 SECRET_KEY = os.getenv("SECRET_KEY", "E1BF978D6F44AE82ED6FD6CDC481EE1BF978D6F44AE82ED6FD6CDC481E")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
-JWT_TOKEN_GENERATOR_URL = os.getenv("JWT_TOKEN_GENERATOR_URL", "https://yth3d4dbpe.eu-west-1.awsapprunner.com/api/Authentication/Login")
+JWT_TOKEN_GENERATOR_URL = os.getenv("JWT_TOKEN_GENERATOR_URL", "https://mosefakapiss.runasp.net/api/Authentication/Login")
 
 postgres_pool = config.postgres_pool
 
