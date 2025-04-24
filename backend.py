@@ -3,6 +3,7 @@ import requests
 import base64
 import json
 from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from jose import JWTError, jwt  # type: ignore
 from Workflow.utils.config import Config
@@ -25,6 +26,15 @@ class NewChatRequest(BaseModel):
     chat_name: str
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allow all headers
+)
+
 config = Config()
 workflow = Workflow(config)
 
