@@ -33,3 +33,6 @@ python-jose==3.4.0
 requests
 jose
 pydantic
+
+websockets
+markdown
