@@ -391,7 +391,7 @@ async def create_new_chat(
         # Invalidate cache for user's chat list
         cache_key = get_cache_key(user_id, "chats")
         if cache_key in cache:
-            del cache[key]
+            del cache[cache_key]
         
         return {
             "thread_id": thread_id, 
