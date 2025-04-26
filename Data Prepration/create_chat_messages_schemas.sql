@@ -19,4 +19,26 @@ CREATE TABLE chat_messages (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_chat_messages_thread_id ON chat_messages(thread_id);
+CREATE INDEX idx_chat_messages_thread_id ON chat_messages(thread_id)
+
+-- SQL script to update chat_messages table with new columns for ChatGPT-like features
+
+-- Add message_type column to chat_messages table
+ALTER TABLE chat_messages 
+ADD COLUMN IF NOT EXISTS message_type VARCHAR(50) DEFAULT 'text';
+
+-- Add metadata column to chat_messages table (as JSONB for flexibility)
+ALTER TABLE chat_messages 
+ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT NULL;
+
+-- Update existing records to have default message_type
+UPDATE chat_messages 
+SET message_type = 'text' 
+WHERE message_type IS NULL;
+
+-- Create index on message_type for faster queries
+CREATE INDEX IF NOT EXISTS idx_chat_messages_message_type ON chat_messages(message_type);
+
+-- Add comment to explain the purpose of these columns
+COMMENT ON COLUMN chat_messages.message_type IS 'Type of message (text, code, error, suggestion, greeting, etc.)';
+COMMENT ON COLUMN chat_messages.metadata IS 'Additional metadata for the message in JSON format';
