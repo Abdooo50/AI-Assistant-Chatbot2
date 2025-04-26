@@ -533,130 +533,94 @@ def question_answer(state: State):
 @traceable(metadata={"llm": MODEL_NAME})
 def recommend_doctor(state: State):
     """
-    Recommends appropriate doctors based on user symptoms with enhanced error handling.
-    
-    Args:
-        state: The current state of the workflow.
-        
-    Returns:
-        Updated state with the generated response.
+    Combines robust error handling, multilingual support, payload-based authorization,
+    and FAISS‐based context retrieval to recommend doctors.
     """
-    messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
-    structured_conversation = extract_messages(messages)
+    # --- Extract and validate payload ---
+    payload = state.get("payload", {})
+    user_id = payload.get("user_id")
+    user_role = payload.get("role")
+    if not user_id or not user_role:
+        return {"messages": ["Error: Missing user ID or role."]}
 
+    # --- Prepare conversation history ---
+    raw_msgs = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
+    structured_conversation = extract_messages(raw_msgs)
     question = state["messages"][-1].content
 
-    response_langauge = "English"
-
+    # --- Language detection & translation ---
     is_arabic = contains_arabic(question)
-
+    response_language = "Arabic" if is_arabic else "English"
     if is_arabic:
-        response_langauge = "Arabic"
         question = translate_question(question=question, llm=llm)
 
     try:
-        # Get database name from environment variable with fallback
-        db_name = os.getenv("MOSEFAK_APP_DATABASE_NAME", "mosefak-management")
-        
-        # Query doctors from database with enhanced error handling
-        doctors_info = query_doctors_from_db(mosefak_app_db)
-        
-        # Check if we got an error message back
+        # --- Query doctor info with enhanced error check ---
+        doctors_info = query_doctors_from_db(mosefak_app_db, user_id, user_role)
         if isinstance(doctors_info, str) and ("error" in doctors_info.lower() or "unable to access" in doctors_info.lower()):
-            # Handle database error with appropriate language response
             if is_arabic:
-                return {"messages": [f"""
-                عذراً، لا يمكنني الوصول إلى قاعدة البيانات في الوقت الحالي للحصول على المعلومات المطلوبة.
-
-                إذا كنت تبحث عن توصية طبيب لصداع، فبشكل عام، يمكن أن يساعدك طبيب الأعصاب أو طبيب الأسرة.
-
-                للصداع، قد تساعد بعض النصائح العامة مثل:
-                - شرب الكثير من الماء
-                - أخذ قسط من الراحة في غرفة هادئة ومظلمة
-                - تجنب مسببات الصداع مثل الضوضاء الصاخبة أو الإضاءة الساطعة
-
-                إذا كان الصداع شديداً أو مستمراً، يرجى استشارة طبيب في أقرب وقت ممكن.
+                return {"messages": ["""
+                عذراً، لا يمكنني الوصول إلى معلومات الأطباء في الوقت الحالي.
+                بشكل عام، يمكنك زيارة طبيب أعصاب أو طبيب عائلة.
+                إذا كانت الأعراض شديدة أو مستمرة، يُرجى استشارة طبيب مختص في أقرب فرصة.
                 """]}
             else:
-                return {"messages": [f"""
-                I'm sorry, I cannot access the database at the moment to retrieve the requested information.
-
-                If you're looking for a doctor recommendation for a headache, generally, a neurologist or family physician can help you.
-
-                For headaches, some general advice that might help includes:
-                - Drinking plenty of water
-                - Taking rest in a quiet, dark room
-                - Avoiding headache triggers like loud noise or bright lights
-
-                If the headache is severe or persistent, please consult a doctor as soon as possible.
+                return {"messages": ["""
+                I'm sorry, I cannot retrieve doctor information at the moment.
+                Generally, a neurologist or a family physician can help.
+                If symptoms are severe or persistent, please seek a specialist as soon as possible.
                 """]}
-    
-        # Enhanced doctor recommendation template with more empathetic and informative guidance
+
+        # --- Build FAISS index over the formatted doctor info and retrieve focused context ---
+        faiss_idx = create_faiss_index(doctors_info, embeddings)
+        context = retrieve_context(faiss_idx, question, llm).get("result", "")
+
+        # --- Assemble the system prompt with both raw list and retrieved snippet ---
         prompt_template = ChatPromptTemplate([
             (
                 "system",
                 f"""
                 You are an empathetic medical assistant specializing in doctor recommendations.
+                
+                **Previous Messages:**\n{{messages}}\n
+                **Available Doctors:**\n{doctors_info}\n
+                **Relevant Details Extracted:**\n{context}\n
 
-                - **Previous Human AI Messages:**\n {{messages}}\n
-                - **Available Doctors Information:**\n {doctors_info}\n
+                **How to Recommend:**
+                - Acknowledge the user's concern.
+                - Identify the right specialty for their symptoms.
+                - Recommend specific doctors from the list.
+                - Explain why each doctor is suitable.
+                - Provide location and working days if available.
 
-                **Approach to Doctor Recommendations:**
-                - Begin by acknowledging the user's health concern with empathy
-                - Based on their symptoms, identify the most appropriate medical specialty
-                - Recommend specific doctors from the available list who match their needs
-                - If no perfect match exists, suggest the closest appropriate specialist
-                - Provide a brief explanation of why this type of doctor is appropriate for their condition
-                - Include practical information about the recommended doctors (location, working days)
+                **If No Perfect Match:**
+                - Suggest the closest appropriate specialist.
+                - Offer general self-care advice.
+                - Advise when to seek urgent care.
 
-                **When No Doctors Are Available:**
-                - Acknowledge the user's concern with empathy
-                - Explain what type of specialist would typically help with their symptoms
-                - Provide general self-care advice for their condition
-                - Suggest when they should seek urgent medical care
-                - Offer guidance on finding appropriate specialists elsewhere
-
-                **Response Style:**
-                - Be conversational and warm while maintaining professionalism
-                - Structure your response in clear, easy-to-read paragraphs
-                - Use simple, non-technical language when possible
-                - Show genuine concern for the user's wellbeing
-                - Respond in {response_langauge}
+                Respond in {response_language}.
                 """
-            ), 
+            ),
             ("user", question)
         ])
 
-        chain = (
-            RunnablePassthrough()
-            | prompt_template
-            | llm
-        )
-
+        # --- Invoke the LLM chain ---
+        chain = RunnablePassthrough() | prompt_template | llm
         response = chain.invoke({"messages": structured_conversation})
 
         return {"messages": [response]}
-        
+
     except Exception as e:
-        # Fallback response in case of errors
-        error_message = str(e)
-        print(f"Error in recommend_doctor: {error_message}")
-        
+        # --- Fallback on unexpected errors ---
         if is_arabic:
             return {"messages": ["""
-            عذراً، حدث خطأ أثناء محاولة الوصول إلى معلومات الأطباء. 
-
-            للحصول على توصية طبية مناسبة، يرجى استشارة طبيب الرعاية الأولية الذي يمكنه توجيهك إلى الأخصائي المناسب.
-
-            نأسف على هذا الانقطاع في الخدمة.
+            عذراً، حدث خطأ أثناء محاولة الحصول على توصية الأطباء.
+            يرجى استشارة طبيب الرعاية الأولية لتوجيهك للأخصائي المناسب.
             """]}
         else:
             return {"messages": ["""
-            I apologize, but there was an error while trying to access doctor information.
-
-            For an appropriate medical recommendation, please consult with a primary care physician who can direct you to the right specialist.
-
-            We apologize for this service interruption.
+            I apologize, an error occurred while fetching doctor recommendations.
+            Please consult a primary care physician who can refer you to the right specialist.
             """]}
 
 @traceable(metadata={"llm": MODEL_NAME})
