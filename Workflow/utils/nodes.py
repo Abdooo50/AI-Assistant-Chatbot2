@@ -650,7 +650,7 @@ def system_flow_qa(state: State):
 
     try:
         # Load FAISS index and check if it’s valid
-        faiss_index = load_faiss_index("system_flow", embeddings=config.embeddings)
+        faiss_index = load_faiss_index("system_flow")
         if faiss_index is None:
             raise ValueError("FAISS index failed to load from 'system_flow' directory.")
 
