@@ -22,7 +22,6 @@ class Workflow:
         self.graph_builder.add_sequence([write_and_execute_query, generate_answer])
         self.graph_builder.add_node("system_flow_qa", system_flow_qa)
         self.graph_builder.add_node("recommend_doctor", recommend_doctor)
-        self.graph_builder.add_node("handle_out_of_scope", handle_out_of_scope)
 
         self.graph_builder.add_conditional_edges(
             START,
@@ -31,8 +30,7 @@ class Workflow:
                 "query_related": "write_and_execute_query",
                 "medical_related": "question_answer",
                 "system_flow_related": "system_flow_qa",
-                "doctor_recommendation_related": "recommend_doctor",
-                "out_of_scope": "handle_out_of_scope"
+                "doctor_recommendation_related": "recommend_doctor"
             }
         )
 
@@ -41,7 +39,6 @@ class Workflow:
         self.graph_builder.add_edge("generate_answer", END)
         self.graph_builder.add_edge("system_flow_qa", END)
         self.graph_builder.add_edge("recommend_doctor", END)
-        self.graph_builder.add_edge("handle_out_of_scope", END)
 
         self.checkpointer = PostgresSaver(config.postgres_pool)
         self.graph = self.graph_builder.compile(checkpointer=self.checkpointer)
