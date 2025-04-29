@@ -1046,6 +1046,3 @@ async def startup_event():
     background_tasks = BackgroundTasks()
     background_tasks.add_task(schedule_cache_cleanup)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
