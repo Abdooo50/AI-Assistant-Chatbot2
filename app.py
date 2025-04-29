@@ -11,7 +11,7 @@ import markdown
 load_dotenv()
 
 # Configuration
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+API_URL = "https://ai-medical-assistant-production.up.railway.app"
 AUTH_URL = os.getenv("AUTH_URL", "https://mosefakapiss.runasp.net/api/Authentication/Login")
 
 # Initialize session state
