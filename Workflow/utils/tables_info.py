@@ -1,6 +1,6 @@
 patient_and_doctor_tables_info = \
 '''
-CREATE TABLE [mosefak-app].[dbo].[ContactUs] (
+CREATE TABLE [db18302].[dbo].[ContactUs] (
     [Id] int NOT NULL IDENTITY,
     [Message] nvarchar(256) NOT NULL,
     [AppUserId] int NOT NULL,
@@ -8,7 +8,7 @@ CREATE TABLE [mosefak-app].[dbo].[ContactUs] (
     CONSTRAINT [PK_ContactUs] PRIMARY KEY ([Id])
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Doctors] (
+CREATE TABLE [db18302].[dbo].[Doctors] (
     [Id] int NOT NULL IDENTITY,
     [AppUserId] int NOT NULL,
     [LicenseNumber] nvarchar(256) NOT NULL,
@@ -18,7 +18,7 @@ CREATE TABLE [mosefak-app].[dbo].[Doctors] (
     CONSTRAINT [PK_Doctors] PRIMARY KEY ([Id])
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Notifications] (
+CREATE TABLE [db18302].[dbo].[Notifications] (
     [Id] int NOT NULL IDENTITY,
     [UserId] int NOT NULL,
     [Title] nvarchar(256) NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE [mosefak-app].[dbo].[Notifications] (
     CONSTRAINT [PK_Notifications] PRIMARY KEY ([Id])
 );
 
-CREATE TABLE [mosefak-app].[dbo].[AppointmentTypes] (
+CREATE TABLE [db18302].[dbo].[AppointmentTypes] (
     [Id] int NOT NULL IDENTITY,
     [Duration] time NOT NULL,
     [VisitType] nvarchar(256) NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE [mosefak-app].[dbo].[AppointmentTypes] (
     CONSTRAINT [FK_AppointmentTypes_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Awards] (
+CREATE TABLE [db18302].[dbo].[Awards] (
     [Id] int NOT NULL IDENTITY,
     [Title] nvarchar(512) NOT NULL,
     [DateReceived] date NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE [mosefak-app].[dbo].[Awards] (
     CONSTRAINT [FK_Awards_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Clinics] (
+CREATE TABLE [db18302].[dbo].[Clinics] (
     [Id] int NOT NULL IDENTITY,
     [Name] nvarchar(max) NOT NULL,
     [Street] nvarchar(max) NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE [mosefak-app].[dbo].[Clinics] (
     CONSTRAINT [FK_Clinics_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Educations] (
+CREATE TABLE [db18302].[dbo].[Educations] (
     [Id] int NOT NULL IDENTITY,
     [Degree] nvarchar(256) NOT NULL,
     [Major] nvarchar(256) NOT NULL,
@@ -82,7 +82,7 @@ CREATE TABLE [mosefak-app].[dbo].[Educations] (
     CONSTRAINT [FK_Educations_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Experiences] (
+CREATE TABLE [db18302].[dbo].[Experiences] (
     [Id] int NOT NULL IDENTITY,
     [Title] nvarchar(256) NOT NULL,
     [HospitalLogo] nvarchar(512) NULL,
@@ -98,7 +98,7 @@ CREATE TABLE [mosefak-app].[dbo].[Experiences] (
     CONSTRAINT [FK_Experiences_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Reviews] (
+CREATE TABLE [db18302].[dbo].[Reviews] (
     [Id] int NOT NULL IDENTITY,
     [Rate] int NOT NULL,
     [Comment] nvarchar(256) NULL,
@@ -109,7 +109,7 @@ CREATE TABLE [mosefak-app].[dbo].[Reviews] (
     CONSTRAINT [FK_Reviews_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Specializations] (
+CREATE TABLE [db18302].[dbo].[Specializations] (
     [Id] int NOT NULL IDENTITY,
     [Name] nvarchar(max) NOT NULL,
     [Category] nvarchar(max) NOT NULL,
@@ -118,7 +118,7 @@ CREATE TABLE [mosefak-app].[dbo].[Specializations] (
     CONSTRAINT [FK_Specializations_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Appointments] (
+CREATE TABLE [db18302].[dbo].[Appointments] (
     [Id] int NOT NULL IDENTITY,
     [DoctorId] int NOT NULL,
     [PatientId] int NOT NULL,
@@ -141,7 +141,7 @@ CREATE TABLE [mosefak-app].[dbo].[Appointments] (
     CONSTRAINT [FK_Appointments_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[WorkingTimes] (
+CREATE TABLE [db18302].[dbo].[WorkingTimes] (
     [Id] int NOT NULL IDENTITY,
     [Day] nvarchar(max) NOT NULL,
     [ClinicId] int NOT NULL,
@@ -149,7 +149,7 @@ CREATE TABLE [mosefak-app].[dbo].[WorkingTimes] (
     CONSTRAINT [FK_WorkingTimes_Clinics_ClinicId] FOREIGN KEY ([ClinicId]) REFERENCES [Clinics] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Payments] (
+CREATE TABLE [db18302].[dbo].[Payments] (
     [Id] int NOT NULL IDENTITY,
     [AppointmentId] int NOT NULL,
     [TransactionId] uniqueidentifier NOT NULL,
@@ -162,7 +162,7 @@ CREATE TABLE [mosefak-app].[dbo].[Payments] (
     CONSTRAINT [FK_Payments_Appointments_AppointmentId] FOREIGN KEY ([AppointmentId]) REFERENCES [Appointments] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Periods] (
+CREATE TABLE [db18302].[dbo].[Periods] (
     [Id] int NOT NULL IDENTITY,
     [StartTime] TIME NOT NULL,
     [EndTime] TIME NOT NULL,
@@ -238,7 +238,7 @@ CREATE TABLE [db18303].[Security].[UserRoles] (
 
 admin_tables_info = \
 '''
-CREATE TABLE [mosefak-app].[dbo].[ContactUs] (
+CREATE TABLE [db18302].[dbo].[ContactUs] (
     [Id] int NOT NULL IDENTITY,
     [Message] nvarchar(256) NOT NULL,
     [AppUserId] int NOT NULL,
@@ -254,7 +254,7 @@ CREATE TABLE [mosefak-app].[dbo].[ContactUs] (
     CONSTRAINT [PK_ContactUs] PRIMARY KEY ([Id])
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Doctors] (
+CREATE TABLE [db18302].[dbo].[Doctors] (
     [Id] int NOT NULL IDENTITY,
     [AppUserId] int NOT NULL,
     [LicenseNumber] nvarchar(256) NOT NULL,
@@ -272,7 +272,7 @@ CREATE TABLE [mosefak-app].[dbo].[Doctors] (
     CONSTRAINT [PK_Doctors] PRIMARY KEY ([Id])
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Notifications] (
+CREATE TABLE [db18302].[dbo].[Notifications] (
     [Id] int NOT NULL IDENTITY,
     [UserId] int NOT NULL,
     [Title] nvarchar(256) NOT NULL,
@@ -290,7 +290,7 @@ CREATE TABLE [mosefak-app].[dbo].[Notifications] (
     CONSTRAINT [PK_Notifications] PRIMARY KEY ([Id])
 );
 
-CREATE TABLE [mosefak-app].[dbo].[AppointmentTypes] (
+CREATE TABLE [db18302].[dbo].[AppointmentTypes] (
     [Id] int NOT NULL IDENTITY,
     [Duration] time NOT NULL,
     [VisitType] nvarchar(256) NOT NULL,
@@ -309,7 +309,7 @@ CREATE TABLE [mosefak-app].[dbo].[AppointmentTypes] (
     CONSTRAINT [FK_AppointmentTypes_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Awards] (
+CREATE TABLE [db18302].[dbo].[Awards] (
     [Id] int NOT NULL IDENTITY,
     [Title] nvarchar(512) NOT NULL,
     [DateReceived] date NOT NULL,
@@ -329,7 +329,7 @@ CREATE TABLE [mosefak-app].[dbo].[Awards] (
     CONSTRAINT [FK_Awards_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Clinics] (
+CREATE TABLE [db18302].[dbo].[Clinics] (
     [Id] int NOT NULL IDENTITY,
     [Name] nvarchar(max) NOT NULL,
     [Street] nvarchar(max) NOT NULL,
@@ -354,7 +354,7 @@ CREATE TABLE [mosefak-app].[dbo].[Clinics] (
     CONSTRAINT [FK_Clinics_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Educations] (
+CREATE TABLE [db18302].[dbo].[Educations] (
     [Id] int NOT NULL IDENTITY,
     [Degree] nvarchar(256) NOT NULL,
     [Major] nvarchar(256) NOT NULL,
@@ -379,7 +379,7 @@ CREATE TABLE [mosefak-app].[dbo].[Educations] (
     CONSTRAINT [FK_Educations_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Experiences] (
+CREATE TABLE [db18302].[dbo].[Experiences] (
     [Id] int NOT NULL IDENTITY,
     [Title] nvarchar(256) NOT NULL,
     [HospitalLogo] nvarchar(512) NULL,
@@ -404,7 +404,7 @@ CREATE TABLE [mosefak-app].[dbo].[Experiences] (
     CONSTRAINT [FK_Experiences_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Reviews] (
+CREATE TABLE [db18302].[dbo].[Reviews] (
     [Id] int NOT NULL IDENTITY,
     [Rate] int NOT NULL,
     [Comment] nvarchar(256) NULL,
@@ -423,7 +423,7 @@ CREATE TABLE [mosefak-app].[dbo].[Reviews] (
     CONSTRAINT [FK_Reviews_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Specializations] (
+CREATE TABLE [db18302].[dbo].[Specializations] (
     [Id] int NOT NULL IDENTITY,
     [Name] nvarchar(max) NOT NULL,
     [Category] nvarchar(max) NOT NULL,
@@ -441,7 +441,7 @@ CREATE TABLE [mosefak-app].[dbo].[Specializations] (
     CONSTRAINT [FK_Specializations_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Appointments] (
+CREATE TABLE [db18302].[dbo].[Appointments] (
     [Id] int NOT NULL IDENTITY,
     [DoctorId] int NOT NULL,
     [PatientId] int NOT NULL,
@@ -472,7 +472,7 @@ CREATE TABLE [mosefak-app].[dbo].[Appointments] (
     CONSTRAINT [FK_Appointments_Doctors_DoctorId] FOREIGN KEY ([DoctorId]) REFERENCES [Doctors] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[WorkingTimes] (
+CREATE TABLE [db18302].[dbo].[WorkingTimes] (
     [Id] int NOT NULL IDENTITY,
     [Day] nvarchar(max) NOT NULL,
     [ClinicId] int NOT NULL,
@@ -489,7 +489,7 @@ CREATE TABLE [mosefak-app].[dbo].[WorkingTimes] (
     CONSTRAINT [FK_WorkingTimes_Clinics_ClinicId] FOREIGN KEY ([ClinicId]) REFERENCES [Clinics] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Payments] (
+CREATE TABLE [db18302].[dbo].[Payments] (
     [Id] int NOT NULL IDENTITY,
     [AppointmentId] int NOT NULL,
     [TransactionId] uniqueidentifier NOT NULL,
@@ -510,7 +510,7 @@ CREATE TABLE [mosefak-app].[dbo].[Payments] (
     CONSTRAINT [FK_Payments_Appointments_AppointmentId] FOREIGN KEY ([AppointmentId]) REFERENCES [Appointments] ([Id]) ON DELETE NO ACTION
 );
 
-CREATE TABLE [mosefak-app].[dbo].[Periods] (
+CREATE TABLE [db18302].[dbo].[Periods] (
     [Id] int NOT NULL IDENTITY,
     [StartTime] TIME NOT NULL,
     [EndTime] TIME NOT NULL,
