@@ -636,28 +636,39 @@ def system_flow_qa(state: State):
     """
     messages = str(state["messages"][NUMBER_OF_LAST_MESSAGES:])
     structured_conversation = extract_messages(messages)
-
     question = state["messages"][-1].content
 
     response_langauge = "English"
-
+    user_role = state["payload"]["role"].lower() if "payload" in state and "role" in state["payload"] else "patient"
     is_arabic = contains_arabic(question)
-
+    #print(user_role,"\n")
     if is_arabic:
         response_langauge = "Arabic"
+        if llm is None:
+            raise ValueError("LLM is not initialized. Cannot translate question.")
         question = translate_question(question=question, llm=llm)
 
     try:
-        faiss_index = load_faiss_index("system_flow")
-        context = retrieve_context(faiss_index, question, llm)
+        # Load FAISS index and check if it’s valid
+        faiss_index = load_faiss_index("system_flow", embeddings=config.embeddings)
+        if faiss_index is None:
+            raise ValueError("FAISS index failed to load from 'system_flow' directory.")
 
-        print("retrieval Context:", context)
+        # Check if llm is valid before proceeding
+        if llm is None:
+            raise ValueError("Language model (llm) is not initialized. Check environment variables.")
 
+        # Retrieve context
+        role_query = f"As a {user_role}, {question}"
+        context = retrieve_context(faiss_index, role_query, llm)
+        print("Retrieval Context:", context)
+
+        # Define prompt template
         prompt_template = ChatPromptTemplate([
             (
                 "system",
                 """
-                You are a helpful assistant specializing in explaining how to use the medical system.
+                You are a helpful assistant specializing in explaining how to use the medical system. The user is a {user_role}, so tailor your explanation to their needs.
 
                 - **Previous Human AI Messages:**\n {messages}\n
                 - **System Information:**\n {context}\n
@@ -672,6 +683,7 @@ def system_flow_qa(state: State):
                 **Response Style:**
                 - Be concise but thorough
                 - Use simple, non-technical language
+                - Limit to 6 bullets; if more fields exist, group related ones(e.g., 'Personal Information: First Name, Second Name, Date of Birth').
                 - Include practical examples when helpful
                 - Respond in {response_langauge}
                 """
@@ -679,13 +691,14 @@ def system_flow_qa(state: State):
             ("user", question)
         ])
 
-        chain = (
-            RunnablePassthrough()
-            | prompt_template
-            | llm
-        )
-
-        response = chain.invoke({"messages": structured_conversation, "context": context["result"], "response_langauge": response_langauge})
+        # Construct and invoke chain
+        chain = RunnablePassthrough() | prompt_template | llm
+        response = chain.invoke({
+            "user_role": user_role,
+            "messages": structured_conversation,
+            "context": context["result"],
+            "response_langauge": response_langauge
+        })
 
         return {"messages": [response]}
         
@@ -710,7 +723,7 @@ def system_flow_qa(state: State):
 
             We apologize for this service interruption.
             """]}
-
+        
 @traceable(metadata={"llm": MODEL_NAME})
 def handle_out_of_scope(state: State):
     """
