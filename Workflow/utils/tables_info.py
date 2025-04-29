@@ -172,7 +172,7 @@ CREATE TABLE [mosefak-app].[dbo].[Periods] (
 );
 
 ## Private
-CREATE TABLE [mosefak-management].[Security].[Roles] (
+CREATE TABLE [db18303].[Security].[Roles] (
     [Id] int NOT NULL IDENTITY,
     [CreationTime] datetime2 NOT NULL,
     [IsDeleted] bit NOT NULL,
@@ -183,7 +183,7 @@ CREATE TABLE [mosefak-management].[Security].[Roles] (
 );
 
 ## Private
-CREATE TABLE [mosefak-management].[Security].[Users] (
+CREATE TABLE [db18303].[Security].[Users] (
     [Id] int NOT NULL IDENTITY,
     [FirstName] nvarchar(250) NOT NULL,
     [LastName] nvarchar(250) NOT NULL,
@@ -206,7 +206,7 @@ CREATE TABLE [mosefak-management].[Security].[Users] (
 );
 
 
-CREATE TABLE [mosefak-management].[Security].[RoleClaims] (
+CREATE TABLE [db18303].[Security].[RoleClaims] (
     [Id] int NOT NULL IDENTITY,
     [RoleId] int NOT NULL,
     [ClaimType] nvarchar(max) NULL,
@@ -215,7 +215,7 @@ CREATE TABLE [mosefak-management].[Security].[RoleClaims] (
     CONSTRAINT [FK_RoleClaims_Roles_RoleId] FOREIGN KEY ([RoleId]) REFERENCES [Security].[Roles] ([Id]) ON DELETE CASCADE
 );
 
-CREATE TABLE [mosefak-management].[AspNetUserClaims] (
+CREATE TABLE [db18303].[AspNetUserClaims] (
     [Id] int NOT NULL IDENTITY,
     [UserId] int NOT NULL,
     [ClaimType] nvarchar(max) NULL,
@@ -224,7 +224,7 @@ CREATE TABLE [mosefak-management].[AspNetUserClaims] (
     CONSTRAINT [FK_AspNetUserClaims_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Security].[Users] ([Id]) ON DELETE CASCADE
 );
 
-CREATE TABLE [mosefak-management].[Security].[UserRoles] (
+CREATE TABLE [db18303].[Security].[UserRoles] (
     [UserId] int NOT NULL,
     [RoleId] int NOT NULL,
     CONSTRAINT [PK_UserRoles] PRIMARY KEY ([UserId], [RoleId]),
@@ -529,7 +529,7 @@ CREATE TABLE [mosefak-app].[dbo].[Periods] (
 );
 
 ## Private
-CREATE TABLE [mosefak-management].[Security].[Roles] (
+CREATE TABLE [db18303].[Security].[Roles] (
     [Id] int NOT NULL IDENTITY,
     [CreationTime] datetime2 NOT NULL,
     [IsDeleted] bit NOT NULL,
@@ -540,7 +540,7 @@ CREATE TABLE [mosefak-management].[Security].[Roles] (
 );
 
 ## Private
-CREATE TABLE [mosefak-management].[Security].[Users] (
+CREATE TABLE [db18303].[Security].[Users] (
     [Id] int NOT NULL IDENTITY,
     [FirstName] nvarchar(250) NOT NULL,
     [LastName] nvarchar(250) NOT NULL,
@@ -573,7 +573,7 @@ CREATE TABLE [mosefak-management].[Security].[Users] (
 );
 
 
-CREATE TABLE [mosefak-management].[Security].[RoleClaims] (
+CREATE TABLE [db18303].[Security].[RoleClaims] (
     [Id] int NOT NULL IDENTITY,
     [RoleId] int NOT NULL,
     [ClaimType] nvarchar(max) NULL,
@@ -582,7 +582,7 @@ CREATE TABLE [mosefak-management].[Security].[RoleClaims] (
     CONSTRAINT [FK_RoleClaims_Roles_RoleId] FOREIGN KEY ([RoleId]) REFERENCES [Security].[Roles] ([Id]) ON DELETE CASCADE
 );
 
-CREATE TABLE [mosefak-management].[AspNetUserClaims] (
+CREATE TABLE [db18303].[AspNetUserClaims] (
     [Id] int NOT NULL IDENTITY,
     [UserId] int NOT NULL,
     [ClaimType] nvarchar(max) NULL,
@@ -591,7 +591,7 @@ CREATE TABLE [mosefak-management].[AspNetUserClaims] (
     CONSTRAINT [FK_AspNetUserClaims_Users_UserId] FOREIGN KEY ([UserId]) REFERENCES [Security].[Users] ([Id]) ON DELETE CASCADE
 );
 
-CREATE TABLE [mosefak-management].[Security].[UserRoles] (
+CREATE TABLE [db18303].[Security].[UserRoles] (
     [UserId] int NOT NULL,
     [RoleId] int NOT NULL,
     CONSTRAINT [PK_UserRoles] PRIMARY KEY ([UserId], [RoleId]),
